@@ -49,12 +49,11 @@ mov   [gdtr], ax
 lgdt  [gdtr]
 ret
 
-// this probably shouldn't be in text...
+.section .data
 gdtr:
 .word 0
 .double 0
 
-// this probably shouldn't be in text...
 gdt:
 .quad 0
 .quad 0x00C09A0000000FFF // full memory, R/W permissions
