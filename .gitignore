@@ -1,0 +1,8 @@
+*
+!.gitignore
+!kernel.c
+!start.s
+!linker.ld
+!build
+!run
+!shell.nix
