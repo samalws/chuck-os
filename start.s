@@ -30,14 +30,16 @@ hlt
 jmp hang
 
 enter_protected:
+cli
 call load_gdt
+call load_idt
 mov eax, cr0
 or al, 1
 mov cr0, eax
+sti
 ret
 
 load_gdt:
-cli
 xor   eax, eax
 mov   ax, ds
 shl   eax, 4
@@ -49,6 +51,18 @@ mov   [gdtr], ax
 lgdt  [gdtr]
 ret
 
+load_idt:
+xor   eax, eax
+mov   ax, ds
+shl   eax, 4
+add   eax, idt
+mov   [idtr + 2], eax
+mov   eax, idt_end
+sub   eax, idt
+mov   [idtr], ax
+lidt  [idtr]
+ret
+
 .section .data
 gdtr:
 .word 0
@@ -58,3 +72,23 @@ gdt:
 .quad 0
 .quad 0x00C09A0000000FFF // full memory, R/W permissions
 gdt_end:
+
+idtr:
+.word 0
+.double 0
+
+idt:
+.quad 0 // 0
+.quad 0 // 1
+.quad 0 // 2
+.quad 0 // 3
+.quad 0 // 4
+.quad 0 // 5
+.quad 0 // 6
+.quad 0 // 7
+.quad 0 // 8
+// 9:
+idt_offset_a: .word 0 // function goes here
+.double 0x8E000008
+idt_offset_b: .word 0
+idt_end:
