@@ -77,7 +77,7 @@ enterProtected:
 mov eax, cr0
 or al, 1
 mov cr0, eax
-; jmp 8:enterProtected.protectedStart ; TODO causes boot to fail
+; jmp 8:.protectedStart ; TODO causes boot to fail
 ret
 ; TODO lines below also cause boot to fail
 .protectedStart:
@@ -123,7 +123,7 @@ cmp bl, 0
 je retLbl
 inc eax
 cmp bl, BKSLASHN
-je printStr.newline
+je .newline
 push eax
 call writeChar
 pop eax
@@ -143,7 +143,7 @@ call writeChar
 call vgaInc
 cmp ecx, VGA_ROWS
 je retLbl
-jmp clearScreen.loop
+jmp .loop
 
 vgaInc:
 ; ecx, edx: coord
