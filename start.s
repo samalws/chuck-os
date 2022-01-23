@@ -24,9 +24,9 @@ resb 4096
 stackTop:
 
 section .data
-helloWorld:
-db "Welcome to Chuck OS! (now in nasm)"
-db 0
+welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
+vga_row dd 0
+vga_col dd 0
 
 section .text
 start:
@@ -38,11 +38,29 @@ hlt
 jmp hang
 
 kernelMain:
+call clearScreenStd
+mov eax, welcome
+call printStrStd
+mov eax, welcome
+call printStrStd
+ret
+
+printStrStd:
+; eax: string start pos
+; uses global vars vga_row and vga_col
+mov ecx, [vga_row]
+mov edx, [vga_col]
+call printStr
+mov [vga_row], ecx
+mov [vga_col], edx
+ret
+
+clearScreenStd:
+; uses global vars vga_row and vga_col
 call clearScreen
 mov ecx, 0
-mov edx, 0
-mov eax, helloWorld
-call printStr
+mov [vga_row], ecx
+mov [vga_col], ecx
 ret
 
 printStr:
