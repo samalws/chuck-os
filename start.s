@@ -1,4 +1,4 @@
-global _start
+global start
 
 MB_MAGIC equ 0x1BADB002
 MB_FLAGS equ 3
@@ -16,77 +16,77 @@ dd MB_CKSUM
 
 section .bss
 align 16
-stack_bottom:
+stackBottom:
 resb 4096
-stack_top:
+stackTop:
 
 section .data
-hello_world:
+helloWorld:
 db "Welcome to Chuck OS! (now in nasm)"
 db 0
 
 section .text
-_start:
-mov esp, stack_top
-call kernel_main
+start:
+mov esp, stackTop
+call kernelMain
 hang:
 cli
 hlt
 jmp hang
 
-kernel_main:
-call clear_screen
+kernelMain:
+call clearScreen
 mov ecx, 0
 mov edx, 0
-mov eax, hello_world
-call print_str
+mov eax, helloWorld
+call printStr
 ret
 
-print_str:
+printStr:
 ; eax: string start pos
 ; ecx, edx: current position
 ; clobbers eax, bx
 ; updates ecx, edx
 mov bl, [eax]
 cmp bl, 0
-je ret_lbl
+je retLbl
 inc eax
 cmp bl, BKSLASHN
-je print_str.newline
+je printStr.newline
 push eax
-call write_char
+call writeChar
 pop eax
-call vga_inc
-jmp print_str
+call vgaInc
+jmp printStr
 .newline:
-call vga_newline
-jmp print_str
+call vgaNewline
+jmp printStr
 
-clear_screen:
+clearScreen:
 mov bl, ' '
 mov ecx, 0
 mov edx, 0
 .loop:
-call write_char
-call vga_inc
+call writeChar
+call vgaInc
 cmp ecx, VGA_ROWS
-je ret_lbl
-jmp clear_screen.loop
+je retLbl
+jmp clearScreen.loop
 
-vga_inc:
+vgaInc:
 ; ecx: row
 ; edx: col
 inc edx
 cmp edx, VGA_COLS
-je vga_newline
+je vgaNewline
 ret
 
-vga_newline:
+vgaNewline:
 mov edx, 0
 inc ecx
 ret
 
-write_char:
+writeChar:
 ; bl:  character to write
 ; ecx: row to write
 ; edx: col to write
@@ -105,5 +105,5 @@ add eax, VGA_STRT
 mov [eax], bx
 ret
 
-ret_lbl:
+retLbl:
 ret
