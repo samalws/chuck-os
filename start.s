@@ -1,12 +1,12 @@
 global _start
 
-MB_MAGIC: equ 0x1BADB002
-MB_FLAGS: equ 3
-MB_CKSUM: equ -(MB_MAGIC + MB_FLAGS)
-VGA_COLS: equ 80
-VGA_ROWS: equ 25
-VGA_STRT: equ 0xB8000
-BKSLASHN: equ 0xA
+MB_MAGIC equ 0x1BADB002
+MB_FLAGS equ 3
+MB_CKSUM equ -(MB_MAGIC + MB_FLAGS)
+VGA_COLS equ 80
+VGA_ROWS equ 25
+VGA_STRT equ 0xB8000
+BKSLASHN equ 0xA
 
 section .multiboot
 align 4
