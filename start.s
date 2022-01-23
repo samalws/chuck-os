@@ -130,19 +130,27 @@ ret
 printStrStd:
 ; eax: string start pos
 ; uses global vars vgaRow and vgaCol
-mov ecx, [vgaRow]
-mov edx, [vgaCol]
+call stdVgaRead
 call printStr
-mov [vgaRow], ecx
-mov [vgaCol], edx
+call stdVgaWrite
 ret
 
 clearScreenStd:
 ; uses global vars vgaRow and vgaCol
 call clearScreen
 mov ecx, 0
+mov edx, 0
+call stdVgaWrite
+ret
+
+stdVgaRead:
+mov ecx, [vgaRow]
+mov edx, [vgaCol]
+ret
+
+stdVgaWrite:
 mov [vgaRow], ecx
-mov [vgaCol], ecx
+mov [vgaCol], edx
 ret
 
 printStr:
