@@ -28,7 +28,8 @@ times 4096 db 0
 
 section .data
 welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
-isrMsg  db "Sir an interrupt has triggered!", BKSLASHN, 0
+isrNonExceptMsg db "Sir an interrupt has triggered! (non except)", BKSLASHN, 0
+isrExceptMsg    db "Sir an interrupt has triggered! (except)",     BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -89,6 +90,16 @@ ret
 genIdt:
 mov ecx, idt
 .loop:
+cmp ecx, idt+(32*8)
+jl .trap
+; non-trap:
+mov bl, 0
+mov edx, isrNonExcept
+jmp .afterTrap
+.trap:
+mov bl, 1
+mov edx, isrExcept
+.afterTrap:
 call genIdtEntry
 add ecx, 8
 cmp ecx, idt.end
@@ -97,10 +108,12 @@ jmp .loop
 
 genIdtEntry:
 ; ecx: entry address
+; bl:  0 if non-exception, 1 if exception
+; edx: isr address
 ; clobbers eax only
 ; -----
 ; first load offset
-mov eax, isr
+mov eax, edx
 mov ecx[0], ax
 shr eax, 8*2
 mov ecx[6], ax
@@ -109,12 +122,18 @@ mov ax, CODE_SEG
 mov ecx[2], ax
 ; finally load type etc
 mov al, 0b11101110
+or al, bl
 mov ecx[5], al
 ; ecx[4] is reserved, don't touch it
 ret
 
-isr:
-mov eax, isrMsg
+isrNonExcept:
+mov eax, isrNonExceptMsg
+call printStrStd
+iret
+
+isrExcept:
+mov eax, isrExceptMsg
 call printStrStd
 iret
 
@@ -123,7 +142,10 @@ call clearScreenStd
 mov eax, welcome
 call printStrStd
 int 80
-int 80
+int 10
+int 0
+mov eax, 0
+div eax
 int 80
 ret
 
