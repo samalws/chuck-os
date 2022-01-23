@@ -28,6 +28,7 @@ times 4096 db 0
 
 section .data
 welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
+isrMsg  db "Sir an interrupt has triggered!", BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -42,11 +43,20 @@ gdtr:
 dw gdt.end-gdt-1
 dd gdt
 
+idt:
+times 8*256 db 0
+.end:
+
+idtr:
+dw idt.end-idt-1
+dd idt
+
 section .text
 start:
 mov esp, stack.top
 call checkEax
 call loadGdt
+call loadIdt
 call kernelMain
 
 hang:
@@ -71,10 +81,50 @@ mov gs, ax
 mov ss, ax
 ret
 
+loadIdt:
+call genIdt
+lidt [idtr]
+ret
+
+genIdt:
+mov ecx, idt
+.loop:
+call genIdtEntry
+add ecx, 8
+cmp ecx, idt.end
+je retLbl
+jmp .loop
+
+genIdtEntry:
+; ecx: entry address
+; clobbers eax only
+; -----
+; first load offset
+mov eax, isr
+mov ecx[0], ax
+shr eax, 8*2
+mov ecx[6], ax
+; then load seg selector
+mov ax, CODE_SEG
+mov ecx[2], ax
+; finally load type etc
+mov al, 0b11101110
+mov ecx[5], al
+; ecx[4] is reserved, don't touch it
+ret
+
+isr:
+mov eax, isrMsg
+call printStrStd
+iret
+
 kernelMain:
 call clearScreenStd
 mov eax, welcome
 call printStrStd
+int 80
+int 80
+int 80
 ret
 
 printStrStd:
