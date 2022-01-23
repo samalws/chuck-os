@@ -97,15 +97,12 @@ writeChar:
 ; ecx, edx: coord
 ; clobbers eax and bh
 mov bh, 0x0F
-mov eax, VGA_COLS
+mov eax, VGA_COLS*2
 push edx
 mul ecx
 pop edx
 add eax, edx
-push edx
-mov edx, 2
-mul edx
-pop edx
+add eax, edx
 add eax, VGA_STRT
 mov [eax], bx
 ret
