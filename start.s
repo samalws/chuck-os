@@ -3,6 +3,7 @@ global start
 ; code-wide standard:
 ; when dealing with VGA, ecx is row and edx is col
 
+EAXMAGIC equ 0x2BADB002
 MB_MAGIC equ 0x1BADB002
 MB_FLAGS equ 3
 MB_CKSUM equ -(MB_MAGIC + MB_FLAGS)
@@ -10,6 +11,8 @@ VGA_COLS equ 80
 VGA_ROWS equ 25
 VGA_STRT equ 0xB8000
 BKSLASHN equ 0xA
+CODE_SEG equ 8
+DATA_SEG equ 16
 
 section .multiboot
 align 4
@@ -19,9 +22,9 @@ dd MB_CKSUM
 
 section .bss
 align 16
-stackBottom:
+stack:
 times 4096 db 0
-stackTop:
+.top:
 
 section .data
 welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
@@ -33,19 +36,17 @@ gdt:
 db 0,    0,    0, 0, 0, 0,    0,    0
 db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF, 0
 db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF, 0
-gdtEnd:
+.end:
 
 gdtr:
-dw 0
-dd 0
+dw gdt.end-gdt-1
+dd gdt
 
 section .text
 start:
-cli
-mov esp, stackTop
-call enableA20
-call setGdt
-call enterProtected
+mov esp, stack.top
+call checkEax
+call loadGdt
 call kernelMain
 
 hang:
@@ -53,35 +54,16 @@ cli
 hlt
 jmp hang
 
-enableA20:
-; copypasted from osdev.org
-in al, 0x92
-or al, 2
-out 0x92, al
+checkEax:
+cmp eax, EAXMAGIC
+jne hang
 ret
 
-setGdt:
-; copypasted from osdev wiki, I don't really understand rn
-mov eax, 0
-mov ax, ds
-shl eax, 4
-add eax, gdt
-mov [gdtr+2], eax
-mov eax, gdtEnd
-sub eax, gdt
-mov [gdtr], ax
+loadGdt:
 lgdt [gdtr]
-ret
-
-enterProtected:
-mov eax, cr0
-or al, 1
-mov cr0, eax
-; jmp 8:.protectedStart ; TODO causes boot to fail
-ret
-; TODO lines below also cause boot to fail
+jmp CODE_SEG:.protectedStart
 .protectedStart:
-mov ax, 16
+mov ax, DATA_SEG
 mov ds, ax
 mov es, ax
 mov fs, ax
