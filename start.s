@@ -30,22 +30,10 @@ welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
 vgaRow dd 0
 vgaCol dd 0
 
-gdtSpec:
-; ENTRY 0
-dd 0 ; base
-dd 0 ; limit
-db 0 ; type
-; ENTRY 1
-dd 0 ; base
-db 0xCF, 0xFF, 0xFF ; limit
-db 0x9A ; type
-; ENTRY 2
-dd 0 ; base
-db 0xCF, 0xFF, 0xFF ; limit
-db 0x92 ; type
-
 gdt:
-times 8*3 db 0
+times 8 db 0
+db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF
+db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF
 gdtEnd:
 
 gdtr:
@@ -54,15 +42,22 @@ dd 0
 
 section .text
 start:
+cli
 mov esp, stackTop
-; -----
+; enable A20 line (whatever that is)
+call enableA20
+; print out "loading GDT"
 call clearScreenStd
 mov eax, gdtMsg
 call printStrStd
-; -----
-call makeGdt
+; load GDT
 call setGdt
-; -----
+; enter protected mode
+mov eax, cr0
+or al, 1
+mov cr0, eax
+; jmp 08h:protectedStart ; TODO CAUSES PROBLEM
+protectedStart:
 call kernelMain
 
 hang:
@@ -70,42 +65,11 @@ cli
 hlt
 jmp hang
 
-makeGdt:
-mov eax, gdtSpec
-mov ebx, gdt
-.loop:
-call makeGdtN
-add eax, 8
-add ebx, 8
-cmp ebx, gdtEnd
-je retLbl
-jmp makeGdt.loop
-
-makeGdtN:
-; eax: gdt spec entry
-; ebx: gdt entry
-; clobbers cl
-; ------
-; first encode base
-mov cl, eax[3]
-mov ebx[2], cl
-mov cl, eax[2]
-mov ebx[3], cl
-mov cl, eax[1]
-mov ebx[4], cl
-mov cl, eax[0]
-mov ebx[7], cl
-; then encode limit
-mov cl, eax[6]
-mov ebx[0], cl
-mov cl, eax[5]
-mov ebx[1], cl
-mov cl, eax[4]
-mov ebx[6], cl
-; finally encode type
-mov cl, eax[7]
-mov ebx[5], cl
-; done
+enableA20:
+; copypasted from osdev.org
+in al, 0x92
+or al, 2
+out 0x92, al
 ret
 
 setGdt:
