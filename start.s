@@ -1,5 +1,8 @@
 global start
 
+; code-wide standard:
+; when dealing with VGA, ecx is row and edx is col
+
 MB_MAGIC equ 0x1BADB002
 MB_FLAGS equ 3
 MB_CKSUM equ -(MB_MAGIC + MB_FLAGS)
@@ -63,6 +66,7 @@ call vgaNewline
 jmp printStr
 
 clearScreen:
+; clobbers bx, ecx, and edx
 mov bl, ' '
 mov ecx, 0
 mov edx, 0
@@ -74,22 +78,23 @@ je retLbl
 jmp clearScreen.loop
 
 vgaInc:
-; ecx: row
-; edx: col
+; ecx, edx: coord
+; updates ecx, edx
 inc edx
 cmp edx, VGA_COLS
 je vgaNewline
 ret
 
 vgaNewline:
+; ecx, edx: coord
+; updates ecx, edx
 mov edx, 0
 inc ecx
 ret
 
 writeChar:
-; bl:  character to write
-; ecx: row to write
-; edx: col to write
+; bl: character to write
+; ecx, edx: coord
 ; clobbers eax and bh
 mov bh, 0x0F
 mov eax, VGA_COLS
