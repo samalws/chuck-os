@@ -24,16 +24,15 @@ times 4096 db 0
 stackTop:
 
 section .data
-gdtMsg  db "Loading GDT...", BKSLASHN, 0
 welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
 
 gdt:
-times 8 db 0
-db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF
-db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF
+db 0,    0,    0, 0, 0, 0,    0,    0
+db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF, 0
+db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF, 0
 gdtEnd:
 
 gdtr:
@@ -44,20 +43,9 @@ section .text
 start:
 cli
 mov esp, stackTop
-; enable A20 line (whatever that is)
 call enableA20
-; print out "loading GDT"
-call clearScreenStd
-mov eax, gdtMsg
-call printStrStd
-; load GDT
 call setGdt
-; enter protected mode
-mov eax, cr0
-or al, 1
-mov cr0, eax
-; jmp 08h:protectedStart ; TODO CAUSES PROBLEM
-protectedStart:
+call enterProtected
 call kernelMain
 
 hang:
@@ -85,7 +73,24 @@ mov [gdtr], ax
 lgdt [gdtr]
 ret
 
+enterProtected:
+mov eax, cr0
+or al, 1
+mov cr0, eax
+; jmp 8:enterProtected.protectedStart ; TODO causes boot to fail
+ret
+; TODO lines below also cause boot to fail
+.protectedStart:
+mov ax, 16
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov ss, ax
+ret
+
 kernelMain:
+call clearScreenStd
 mov eax, welcome
 call printStrStd
 ret
