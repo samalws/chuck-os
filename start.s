@@ -15,6 +15,7 @@ CODESEG0 equ 8*1
 DATASEG0 equ 8*2
 CODESEG3 equ 8*3 + 3
 DATASEG3 equ 8*4 + 3
+TSS_SEG  equ 8*5
 
 section .multiboot
 align 4
@@ -24,14 +25,19 @@ dd MB_CKSUM
 
 section .bss
 align 16
+
 stack:
 times 4096 db 0
 .top:
 
+isrStack:
+times 4096 db 0
+.top:
+
 section .data
-welcome db "Welcome to Chuck OS! (now in nasm)", BKSLASHN, 0
-isrNonExceptMsg db "Sir an interrupt has triggered! (non except)", BKSLASHN, 0
-isrExceptMsg    db "Sir an interrupt has triggered! (except)",     BKSLASHN, 0
+welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
+isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
+isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -42,6 +48,7 @@ db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF, 0
 db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF, 0
 db 0xFF, 0xFF, 0, 0, 0, 0xFA, 0xCF, 0
 db 0xFF, 0xFF, 0, 0, 0, 0xF2, 0xCF, 0
+db 0,    0,    0, 0, 0, 0,    0,    0 ; tss
 .end:
 
 gdtr:
@@ -55,6 +62,13 @@ times 8*256 db 0
 idtr:
 dw idt.end-idt-1
 dd idt
+
+tss:
+dd 0
+dd isrStack.top
+dw DATASEG0, 0
+times 0x60 db 0
+.end:
 
 section .text
 start:
@@ -78,6 +92,7 @@ jne hang
 ret
 
 loadGdt:
+call genTssGdtEntry
 lgdt [gdtr]
 jmp CODESEG0:.protectedStart
 .protectedStart:
@@ -87,6 +102,28 @@ mov es, ax
 mov fs, ax
 mov gs, ax
 mov ss, ax
+mov ax, TSS_SEG
+ltr ax
+ret
+
+genTssGdtEntry:
+mov ecx, gdt+TSS_SEG
+; base
+mov eax, tss
+mov ecx[2], ax
+shr eax, 8*2
+mov ecx[4], al
+shr eax, 8
+mov ecx[7], al
+; limit
+mov eax, tss.end
+mov ecx[0], ax
+shr eax, 8*2
+or al, 0x40
+mov ecx[6], al
+; access byte
+mov al, 0x89
+mov ecx[5], al
 ret
 
 loadIdt:
@@ -163,12 +200,12 @@ kernelMain:
 call clearScreenStd
 mov eax, welcome
 call printStrStd
-; int 80
-; int 10
-; int 0
-; mov eax, 0
-; div eax
-; int 80
+int 80
+int 10
+int 0
+mov eax, 0
+div eax
+int 80
 ret
 
 printStrStd:
