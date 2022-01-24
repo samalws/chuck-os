@@ -11,8 +11,10 @@ VGA_COLS equ 80
 VGA_ROWS equ 25
 VGA_STRT equ 0xB8000
 BKSLASHN equ 0xA
-CODE_SEG equ 8
-DATA_SEG equ 16
+CODESEG0 equ 8*1
+DATASEG0 equ 8*2
+CODESEG3 equ 8*3 + 3
+DATASEG3 equ 8*4 + 3
 
 section .multiboot
 align 4
@@ -38,6 +40,8 @@ gdt:
 db 0,    0,    0, 0, 0, 0,    0,    0
 db 0xFF, 0xFF, 0, 0, 0, 0x9A, 0xCF, 0
 db 0xFF, 0xFF, 0, 0, 0, 0x92, 0xCF, 0
+db 0xFF, 0xFF, 0, 0, 0, 0xFA, 0xCF, 0
+db 0xFF, 0xFF, 0, 0, 0, 0xF2, 0xCF, 0
 .end:
 
 gdtr:
@@ -58,7 +62,10 @@ mov esp, stack.top
 call checkEax
 call loadGdt
 call loadIdt
+call enterRing3
 call kernelMain
+.loop:
+jmp .loop
 
 hang:
 cli
@@ -72,9 +79,9 @@ ret
 
 loadGdt:
 lgdt [gdtr]
-jmp CODE_SEG:.protectedStart
+jmp CODESEG0:.protectedStart
 .protectedStart:
-mov ax, DATA_SEG
+mov ax, DATASEG0
 mov ds, ax
 mov es, ax
 mov fs, ax
@@ -118,7 +125,7 @@ mov ecx[0], ax
 shr eax, 8*2
 mov ecx[6], ax
 ; then load seg selector
-mov ax, CODE_SEG
+mov ax, CODESEG0
 mov ecx[2], ax
 ; finally load type etc
 mov al, 0b11101110
@@ -137,16 +144,31 @@ mov eax, isrExceptMsg
 call printStrStd
 iret
 
+enterRing3:
+mov ax, DATASEG3
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov eax, esp
+push DATASEG3
+push eax
+pushf
+push CODESEG3
+push retLbl
+iret
+jmp hang
+
 kernelMain:
 call clearScreenStd
 mov eax, welcome
 call printStrStd
-int 80
-int 10
-int 0
-mov eax, 0
-div eax
-int 80
+; int 80
+; int 10
+; int 0
+; mov eax, 0
+; div eax
+; int 80
 ret
 
 printStrStd:
