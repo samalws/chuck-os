@@ -29,14 +29,13 @@ data MID = MID Int  deriving (Eq, Ord, Show)
 data TID = TID Int  deriving (Eq, Ord, Show)
 data IID = IID Int  deriving (Eq, Ord, Show)
 data ProgramInp = IUndef | ILiteral [Int] | ITup ProgramInp ProgramInp | IFn PID | IMemBlk MID | IToken TID | IIO IID  deriving Show
-data ProgramOtp = OUndef | OLiteral [Int] | OTup ProgramOtp ProgramOtp | OFn PID | OMemBlk MID | OToken TID | OIO IID | OCall ProgramOtp ProgramOtp | OLitProgram Program | OMakeToken | OLitIO (StateT Env IO ProgramInp) {- OLitIO only allowed for OS level procs, will be enforced (how?) -}
+data ProgramOtp = OUndef | OLiteral [Int] | OTup ProgramOtp ProgramOtp | OFn PID | OMemBlk MID | OToken TID | OIO IID | OCall ProgramOtp ProgramOtp | OLitProgram Bool {- sudo? -} Program | OMakeToken | OLitIO (StateT Env IO ProgramInp) {- OLitIO only for sudo -}
 data Program = Program (ProgramInp -> State (M.Map MID [Int]) ProgramOtp)
-data Env = Env { programs :: M.Map PID Program, memVals :: M.Map MID [Int], tokens :: S.Set TID, ios :: M.Map IID (StateT Env IO ProgramInp) }
+data Env = Env { programs :: M.Map PID (Bool, Program), memVals :: M.Map MID [Int], tokens :: S.Set TID, ios :: M.Map IID (StateT Env IO ProgramInp) }
 data AllowedList = AllowedList { allowedPids :: S.Set PID, allowedMids :: S.Set MID, allowedTids :: S.Set TID, allowedIids :: S.Set IID }
 -- TODO linear memory -> need linear functions
 -- TODO also have read-only memory, also executable memory?
 -- TODO different function arities
--- TODO separate sudo processes (only for making IO objs) and non-sudo processes; add an OLitSudoProgram constructor
 
 instance Default Env where
   def = Env { programs = M.empty, memVals = M.empty, tokens = S.empty, ios = M.empty }
@@ -77,7 +76,7 @@ genAllowedListOtp _ = mempty
 evalProgram :: (Monad m) => PID -> ProgramInp -> StateT Env m ProgramOtp
 evalProgram callee inp = (M.lookup callee . programs <$> get) >>= \case
   Nothing -> pure OUndef
-  Just (Program prog) -> do
+  Just (_, Program prog) -> do
     mem <- gets memVals
     let (progOtp, mem') = runState runProg mem
     modify (\e -> e { memVals = mem' })
@@ -91,35 +90,43 @@ evalProgram callee inp = (M.lookup callee . programs <$> get) >>= \case
         modify (`M.union` mem)
         pure otp
 
-evalProgramOtp :: (Monad m) => AllowedList -> ProgramOtp -> StateT Env m ProgramInp
-evalProgramOtp _ OUndef = pure IUndef
-evalProgramOtp _ (OLiteral x) = pure $ ILiteral x
-evalProgramOtp allowed (OTup x y) = ITup <$> evalProgramOtp allowed x <*> evalProgramOtp allowed y
-evalProgramOtp allowed (OFn     pid) = pure $ if pid `S.member` allowedPids allowed then IFn     pid else IUndef
-evalProgramOtp allowed (OMemBlk mid) = pure $ if mid `S.member` allowedMids allowed then IMemBlk mid else IUndef
-evalProgramOtp allowed (OToken  tid) = pure $ if tid `S.member` allowedTids allowed then IToken  tid else IUndef
-evalProgramOtp allowed (OIO     iid) = pure $ if iid `S.member` allowedIids allowed then IIO     iid else IUndef
-evalProgramOtp allowed (OCall f x) = do
-  f' <- evalProgramOtp allowed f
-  x' <- evalProgramOtp allowed x
+evalProgramOtp :: (Monad m) => Bool -> AllowedList -> ProgramOtp -> StateT Env m ProgramInp
+evalProgramOtp _ _ OUndef = pure IUndef
+evalProgramOtp _ _ (OLiteral x) = pure $ ILiteral x
+evalProgramOtp sudo allowed (OTup x y) = ITup <$> evalProgramOtp sudo allowed x <*> evalProgramOtp sudo allowed y
+evalProgramOtp _ allowed (OFn     pid) = pure $ if pid `S.member` allowedPids allowed then IFn     pid else IUndef
+evalProgramOtp _ allowed (OMemBlk mid) = pure $ if mid `S.member` allowedMids allowed then IMemBlk mid else IUndef
+evalProgramOtp _ allowed (OToken  tid) = pure $ if tid `S.member` allowedTids allowed then IToken  tid else IUndef
+evalProgramOtp _ allowed (OIO     iid) = pure $ if iid `S.member` allowedIids allowed then IIO     iid else IUndef
+evalProgramOtp sudo allowed (OCall f x) = do
+  f' <- evalProgramOtp sudo allowed f
+  x' <- evalProgramOtp sudo allowed x
   case f' of
-    IFn pid -> evalProgram pid x' >>= evalProgramOtp (genAllowedListInp x')
+    IFn pidF -> evalProgram pidF x' >>= evalPidOtp pidF
     _ -> pure IUndef
-evalProgramOtp allowed (OLitProgram prog) = do
+evalProgramOtp False allowed (OLitProgram True _) = pure IUndef
+evalProgramOtp _ allowed (OLitProgram sudo prog) = do
   env <- get
   let pid = PID $ M.size $ programs env -- TODO fill empty spaces
-  put $ env { programs = M.insert pid prog (programs env) }
+  put $ env { programs = M.insert pid (sudo, prog) (programs env) }
   pure $ IFn pid
-evalProgramOtp allowed OMakeToken = do
+evalProgramOtp _ allowed OMakeToken = do
   env <- get
   let tid = TID $ S.size $ tokens env -- TODO fill empty spaces
   put $ env { tokens = S.insert tid (tokens env) }
   pure $ IToken tid
-evalProgramOtp allowed (OLitIO io) = do
+evalProgramOtp False allowed (OLitIO _) = pure IUndef
+evalProgramOtp True allowed (OLitIO io) = do
   env <- get
   let iid = IID $ M.size $ ios env -- TODO fill empty spaces
   put $ env { ios = M.insert iid io (ios env) }
   pure $ IIO iid
+
+evalPidOtp :: (Monad m) => PID -> ProgramOtp -> StateT Env m ProgramInp
+evalPidOtp callee otp = do
+  sudo <- gets (maybe False fst . M.lookup callee . programs)
+  -- "maybe False" doesn't matter much; otp should be OUndef if M.lookup returns Nothing
+  evalProgramOtp sudo (genAllowedListOtp otp) otp
 
 runIO :: IID -> StateT Env IO ProgramInp
 runIO iid = gets (M.lookup iid . ios) >>= fromMaybe (pure IUndef)
@@ -128,20 +135,11 @@ runInp :: ProgramInp -> StateT Env IO ProgramInp
 runInp (IIO iid) = runIO iid
 runInp _ = pure IUndef
 
-runOtp :: ProgramOtp -> StateT Env IO ProgramInp
-runOtp o = evalProgramOtp (genAllowedListOtp o) o >>= runInp
+runOtp :: Bool -> ProgramOtp -> StateT Env IO ProgramInp
+runOtp sudo o = evalProgramOtp sudo (genAllowedListOtp o) o >>= runInp
 
 runProgram :: PID -> ProgramInp -> StateT Env IO ProgramInp
-runProgram callee inp = evalProgram callee inp >>= evalProgramOtp (genAllowedListInp inp) >>= runInp
-
-{-
-BAD
-curryProg :: Program
-curryProg = Program f where
-  f fn = pure $ OLitProgram $ Program $ g $ inpToOtp fn
-  g fn inpA = pure $ OLitProgram $ Program $ h fn $ inpToOtp inpA
-  h fn inpA inpB = pure (OCall fn (OTup inpA inpB))
--}
+runProgram callee = evalProgram callee >=> evalPidOtp callee >=> runInp
 
 pureProg :: Program
 pureProg = Program (\inp -> pure $ OLitIO $ pure inp)
@@ -154,7 +152,8 @@ thenProg = Program f where
 
 bindProg :: Program
 bindProg = Program f where
-  f (ITup a b) = pure $ OLitIO $ runInp a >>= (\ioOtp -> runOtp (inpToOtp b `OCall` inpToOtp ioOtp))
+  f (ITup a b) = pure $ OLitIO $ runInp a >>= (\ioOtp -> runOtp True (inpToOtp b `OCall` inpToOtp ioOtp))
+  -- the True is irrelevant, since sudo doesn't matter for OCall, or for anything returned by inpToOtp
   f _ = pure OUndef
 
 printProg :: Program
@@ -180,12 +179,12 @@ freeMemProg = Program f where
 
 -- not how it would really be implemented; would take printProg etc as function arguments instead
 helloWorldProg :: Program
-helloWorldProg = Program $ const $ pure $ OCall (OLitProgram printProg) (OLiteral [1,2,3])
+helloWorldProg = Program $ const $ pure $ OCall (OLitProgram True printProg) (OLiteral [1,2,3])
 
 -- not how it would really be implemented; would take printProg etc as function arguments instead
 exampleProg :: Program
-exampleProg = Program $ const $ pure $ OCall (OLitProgram bindProg) $ OTup (OCall (OLitProgram readLnProg) OUndef) (OLitProgram $ Program f) where
-  f (ILiteral l) = pure $ OCall (OLitProgram printProg) (OLiteral (65:l))
+exampleProg = Program $ const $ pure $ OCall (OLitProgram True bindProg) $ OTup (OCall (OLitProgram True readLnProg) OUndef) (OLitProgram True $ Program f) where
+  f (ILiteral l) = pure $ OCall (OLitProgram True printProg) (OLiteral (65:l))
   f _ = pure OUndef
 
-main = runStateT (runOtp $ OCall (OLitProgram exampleProg) OUndef) def >>= putStrLn . ("final output: " ++) . show . fst
+main = runStateT (runOtp True $ OCall (OLitProgram True exampleProg) OUndef) def >>= putStrLn . ("final output: " ++) . show . fst
