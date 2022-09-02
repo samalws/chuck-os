@@ -16,7 +16,7 @@
 -- relies on GRUB bootloader
 -- x86-64
 
-{-# LANGUAGE LambdaCase, NamedFieldPuns #-}
+{-# LANGUAGE LambdaCase, NamedFieldPuns, ViewPatterns #-}
 
 import Control.Monad.State
 import Data.Default
@@ -175,25 +175,37 @@ printProg = Program f where
   f [ILiteral x] = pure $ OLitIO False $ lift (print x) >> pure (ILiteral [])
   f _ = pure OUndef
 
-readLnProg :: Program
-readLnProg = Program $ const $ pure $ OLitIO False $ ILiteral <$> lift readLn
+readLnIO :: StateT Env IO ProgramInp
+readLnIO = ILiteral <$> lift readLn
 
-getMemProg :: Program
-getMemProg = Program $ const $ pure $ OLitIO False f where
-  f = do
-    env <- get
-    let mid = MID $ M.size $ memVals env -- TODO fill empty spaces
-    put $ env { memVals = M.insert mid [] (memVals env), linearIDs = S.insert (MIDID mid) (linearIDs env) }
-    pure $ IIDVal $ MIDID mid
+getMemIO :: StateT Env IO ProgramInp
+getMemIO = do
+  env <- get
+  let mid = MID $ M.size $ memVals env -- TODO fill empty spaces
+  put $ env { memVals = M.insert mid [] (memVals env), linearIDs = S.insert (MIDID mid) (linearIDs env) }
+  pure $ IIDVal $ MIDID mid
 
--- not how it would really be implemented; would take printProg etc as function arguments instead
+starterEnv :: Env
+starterEnv = def { programs = M.fromList [(PID 0, (True, 1, [], pureProg)), (PID 1, (True, 2, [], thenProg)), (PID 2, (True, 2, [], bindProg)), (PID 3, (True, 1, [], printProg))], ios = M.fromList [(IID 0, readLnIO), (IID 1, getMemIO)] }
+
 helloWorldProg :: Program
-helloWorldProg = Program $ const $ pure $ callNonlin (OLitProgram False True 1 printProg) (OLiteral [1,2,3])
-
--- not how it would really be implemented; would take printProg etc as function arguments instead
-exampleProg :: Program
-exampleProg = Program $ const $ pure $ callNonlin (callNonlin (OLitProgram False True 2 bindProg) (OLitProgram False True 0 readLnProg)) (OLitProgram False True 1 $ Program f) where
-  f [ILiteral l] = pure $ callNonlin (OLitProgram False True 1 printProg) (OLiteral (65:l))
+helloWorldProg = Program f where
+  f [print_] = pure $ callNonlin (inpToOtp print_) (OLiteral [1,2,3])
   f _ = pure OUndef
 
-main = runStateT (runOtp True $ OLitProgram False True 0 exampleProg) def >>= putStrLn . ("final output: " ++) . show . fst
+exampleProg :: Program
+exampleProg = Program f where
+  f (fmap inpToOtp -> [pure_, then_, bind_, print_, readLn_, getMem_])
+    = pure $ callNonlin (callNonlin bind_ readLn_) (callNonlin (OLitProgram False False 2 $ Program g) print_)
+  f _ = pure OUndef
+  g [print_, ILiteral l] = pure $ callNonlin (inpToOtp print_) (OLiteral (65:l))
+  g _ = pure OUndef
+
+progsEnv :: Env
+progsEnv = starterEnv { programs = programs starterEnv <> M.fromList [(PID 4, (False, 1, [], helloWorldProg)), (PID 5, (False, 6, [], exampleProg))] }
+
+main = runStateT (runOtp False prog) progsEnv >>= putStrLn . ("final output: " ++) . show . fst where
+  prog = ((((((fn 5 `cn` fn 0) `cn` fn 1) `cn` fn 2) `cn` fn 3) `cn` io 0) `cn` io 1)
+  cn = callNonlin
+  fn = OIDVal . PIDID . PID
+  io = OIDVal . IIDID . IID
