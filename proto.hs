@@ -20,6 +20,7 @@
 
 import Control.Monad.State
 import Data.Default
+import Data.Foldable
 import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -36,7 +37,9 @@ data ProgramInp = IUndef | ILiteral [Int] | ITup ProgramInp ProgramInp | IIDVal 
 data ProgramOtp = OUndef | OLiteral [Int] | OTup ProgramOtp ProgramOtp | OIDVal ID | OToReadMem MID | OCall Bool {- linear result if partial -} ProgramOtp ProgramOtp | OLitProgram Bool {- linear -} Bool {- sudo -} Int {- arity -} Program | OMakeToken Bool {- linear -} | OLitIO {- only for sudo -} Bool {- linear -} (StateT Env IO ProgramInp)
 data Program = Program ([ProgramInp] -> M.Map MID [Int] -> State (M.Map MID [Int]) ProgramOtp)
 data Env = Env { programs :: M.Map PID (Bool, Int, [ProgramInp], Program), memVals :: M.Map MID [Int], tokens :: S.Set TID, ios :: M.Map IID (StateT Env IO ProgramInp), linearIDs :: S.Set ID }
--- TODO garbage collection
+
+-- TODO garbage collect nonlinear values
+-- TODO garbage collect an IO when you use it
 
 callNonlin = OCall False
 
@@ -86,6 +89,51 @@ addProgram linear sudo arity args prog = do
 evalZeroArityProgram :: Program -> ProgramOtp
 evalZeroArityProgram (Program prog) = evalState (prog [] M.empty) M.empty
 
+pididOnly (PIDID pid) = Just pid
+pididOnly _ = Nothing
+
+mididOnly (MIDID mid) = Just mid
+mididOnly _ = Nothing
+
+tididOnly (TIDID tid) = Just tid
+tididOnly _ = Nothing
+
+iididOnly (IIDID iid) = Just iid
+iididOnly _ = Nothing
+
+removeFromLinearIDs :: (Monad m) => ID -> StateT Env m ()
+removeFromLinearIDs id = modify (\env -> env { linearIDs = S.delete id (linearIDs env) })
+
+gcPid :: (Monad m) => PID -> StateT Env m ()
+gcPid pid = do
+  removeFromLinearIDs (PIDID pid)
+  modify (\env -> env { programs = M.delete pid (programs env) })
+
+gcMid :: (Monad m) => MID -> StateT Env m ()
+gcMid mid = do
+  removeFromLinearIDs (MIDID mid)
+  modify (\env -> env { memVals = M.delete mid (memVals env) })
+
+gcTid :: (Monad m) => TID -> StateT Env m ()
+gcTid tid = do
+  removeFromLinearIDs (TIDID tid)
+  modify (\env -> env { tokens = S.delete tid (tokens env) })
+
+gcIid :: (Monad m) => IID -> StateT Env m ()
+gcIid iid = do
+  removeFromLinearIDs (IIDID iid)
+  modify (\env -> env { ios = M.delete iid (ios env) })
+
+gcId :: (Monad m) => ID -> StateT Env m ()
+gcId id = do
+  maybe (pure ()) gcPid (pididOnly id)
+  maybe (pure ()) gcMid (mididOnly id)
+  maybe (pure ()) gcTid (tididOnly id)
+  maybe (pure ()) gcIid (iididOnly id)
+
+gcItems :: (Monad m) => S.Set ID -> StateT Env m ()
+gcItems ids = void $ sequence (gcId <$> S.toList ids)
+
 evalProgram :: (Monad m) => Bool -> PID -> ProgramInp -> StateT Env m ProgramOtp
 evalProgram forcePartialLinear callee inp = (M.lookup callee . programs <$> get) >>= \case
   Nothing -> pure OUndef
@@ -94,6 +142,7 @@ evalProgram forcePartialLinear callee inp = (M.lookup callee . programs <$> get)
     linears <- gets linearIDs
     let (progOtp, mem') = runState (runProg linears) mem
     modify (\e -> e { memVals = mem' })
+    gcItems ((fold (genIDSetInp <$> (inp:args)) `S.intersection` linears) `S.difference` genIDSetOtp progOtp) -- garbage collect linear values present in inp but not in otp
     pure progOtp
     where
       -- bool: want linears or nonlinears
@@ -105,8 +154,6 @@ evalProgram forcePartialLinear callee inp = (M.lookup callee . programs <$> get)
         modify $ elimBadKeys True linears
         modify (`M.union` mem)
         pure otp
-      mididOnly (MIDID mid) = Just mid
-      mididOnly _ = Nothing
   Just (sudo, arity, args, prog) -> do
     linear <- or <$> sequence (containsLinearVals . genIDSetInp <$> (inp:args))
     OIDVal . PIDID <$> addProgram (linear || forcePartialLinear) sudo arity (inp:args) prog
@@ -209,8 +256,16 @@ exampleProg = Program f where
 progsEnv :: Env
 progsEnv = starterEnv { programs = programs starterEnv <> M.fromList [(PID 4, (False, 1, [], helloWorldProg)), (PID 5, (False, 6, [], exampleProg))] }
 
-main = runStateT (runOtp False prog) progsEnv >>= putStrLn . ("final output: " ++) . show . fst where
-  prog = ((((((fn 5 `cn` fn 0) `cn` fn 1) `cn` fn 2) `cn` fn 3) `cn` io 0) `cn` io 1)
-  cn = callNonlin
-  fn = OIDVal . PIDID . PID
-  io = OIDVal . IIDID . IID
+main = do
+  (otp, state) <- runStateT (runOtp False prog) progsEnv
+  putStrLn $ "final output: " ++ show otp
+  putStrLn $ "pids: " ++ show (M.keys $ programs state)
+  putStrLn $ "mids: " ++ show (M.keys $ memVals state)
+  putStrLn $ "tids: " ++ show (S.toList $ tokens state)
+  putStrLn $ "iids: " ++ show (M.keys $ ios state)
+  putStrLn $ "linear IDs: " ++ show (S.toList $ linearIDs state)
+  where
+    prog = ((((((fn 5 `cn` fn 0) `cn` fn 1) `cn` fn 2) `cn` fn 3) `cn` io 0) `cn` io 1)
+    cn = callNonlin
+    fn = OIDVal . PIDID . PID
+    io = OIDVal . IIDID . IID
