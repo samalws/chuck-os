@@ -76,6 +76,7 @@ ID unusedID(struct IDMap* map, enum IDType type) {
 struct Program {
   bool sudo;
   int arity;
+  int argsGiven;
   void* inputs;
   void* startPoint;
 };
@@ -132,6 +133,23 @@ enum ProgramOtp {
   OPointer
 };
 
+enum ProgramOtp* runProgram(struct Program* prog) {
+  return 0; // TODO
+}
+
+enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Program* prog, enum ProgramInp* inp) {
+  struct Program prog2; // TODO
+  if (prog2.argsGiven >= prog2.arity) {
+    return runProgram(&prog2);
+  } else {
+    ID pid = unusedID(&programs, PID);
+    insert(&programs, pid, &prog2);
+    bool linear = forcePartialLinear || wasLinear; /* || inp linear TODO */
+    if (linear)
+      insert(&linearIDs, pid, 0);
+  }
+}
+
 #define advanceInp(amt) *((char**) inpLoc) += amt;
 
 #define copyBits(loc, amt) \
@@ -185,12 +203,31 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
       writeID(*id);
     }
   } else if (otpVal == OCall) {
-    // TODO
+    viewOtpAs(forcePartialLinear, bool);
+    enum ProgramInp* oldInpLoc = *inpLoc; // TODO for now we just hijack inpLoc
+    enum ProgramInp* fnLoc = *inpLoc;
+    evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
+    enum ProgramInp* fnInp = *inpLoc;
+    evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
+    *inpLoc = oldInpLoc;
+    ID pid = *((ID*) (fnLoc+1));
+    struct Program* prog = lookup(&programs, pid);
+    if (*fnLoc != IIDVal || lookup(allowed, pid) == 0 || prog == 0) {
+      writeIVal(IUndef);
+    } else {
+      bool wasLinear = lookup(&linearIDs, pid) != 0; // yes, I know I can leave out the "!= 0"
+      evalProgram(*forcePartialLinear, wasLinear, prog, fnInp);
+      *inpLoc = oldInpLoc;
+      evalProgramOtp(sudo, allowed, otpLoc, inpLoc); // TODO sudo and allowed need to change
+    }
   } else if (otpVal == OLitProgram) {
     viewOtpAs(linear, bool);
     viewOtpAs(prog, struct Program);
     if (!sudo && prog->sudo) {
       writeIVal(IUndef);
+    } else if (prog->arity == 0) {
+      *otpLoc = runProgram(prog);
+      evalProgramOtp(sudo, allowed, otpLoc, inpLoc); // TODO sudo and allowed need to change
     } else {
       ID pid = unusedID(&programs, PID);
       insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method(?)
@@ -218,6 +255,7 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
       writeID(iid);
     }
   } else if (otpVal == OPointer) {
+    // TODO typically we don't want to let the user access this
     *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
     evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
   }
