@@ -133,8 +133,8 @@ enum ProgramOtp {
 };
 
 #define advanceFwd(amt) \
-  *((char*) inpLoc) += amt; \
-  *((char*) otpLoc) += amt;
+  *((char**) inpLoc) += amt; \
+  *((char**) otpLoc) += amt;
 
 #define copyBits(amt) \
   memcpy((void*) *inpLoc, (void*) *otpLoc, amt); \
@@ -146,8 +146,8 @@ enum ProgramOtp {
   (*otpLoc)++;
 
 #define writeID(id) \
-  writeIVal(IIDVal); \
-  **((ID**) inpLoc) = id;
+  **((ID**) inpLoc) = id; \
+  (*((ID**) inpLoc))++;
 
 // TODO throw a const somewhere around otp
 void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc) {
@@ -170,24 +170,42 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
   } else if (otpVal == OCall) {
     // TODO
   } else if (otpVal == OLitProgram) {
-    struct Program* prog = (struct Program*) ((*otpLoc) + 1);
-    ID pid = unusedID(&programs, PID);
-    insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method
-    // TODO check linearity
-    // TODO check sudo
-    writeID(pid);
+    bool* linear = (bool*) ((*otpLoc) + 1);
+    struct Program* prog = (struct Program*) ((*linear) + 1);
+    if (!sudo && prog->sudo) {
+      writeIVal(IUndef);
+    } else {
+      ID pid = unusedID(&programs, PID);
+      insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method
+      if (*linear)
+        insert(&linearIDs, pid, 0);
+      writeIVal(IIDVal);
+      writeID(pid);
+    }
+    *((char**) otpLoc) += sizeof(bool) + sizeof(struct Program);
   } else if (otpVal == OMakeToken) {
+    bool* linear = (bool*) ((*otpLoc) + 1);
     ID tid = unusedID(&tokens, TID);
     insert(&tokens, tid, 0);
-    // TODO check linearity
+    if (*linear)
+      insert(&linearIDs, tid, 0);
+    writeIVal(IIDVal);
     writeID(tid);
+    *((char**) otpLoc) += sizeof(bool);
   } else if (otpVal == OLitIO) {
-    struct IO* io = (struct IO*) ((*otpLoc) + 1);
-    ID iid = unusedID(&ios, IID);
-    insert(&ios, iid, io);
-    // TODO check linearity
-    // TODO check sudo
-    writeID(iid);
+    if (!sudo) {
+      writeIVal(IUndef);
+    } else {
+      bool* linear = (bool*) ((*otpLoc) + 1);
+      struct IO* io = (struct IO*) ((*linear) + 1);
+      ID iid = unusedID(&ios, IID);
+      insert(&ios, iid, io);
+      if (*linear)
+        insert(&linearIDs, iid, 0);
+      writeIVal(IIDVal);
+      writeID(iid);
+    }
+    *((char**) otpLoc) += sizeof(bool);
   } else if (otpVal == OPointer) {
     (*otpLoc)++;
     *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
