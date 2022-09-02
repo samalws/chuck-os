@@ -132,91 +132,103 @@ enum ProgramOtp {
   OPointer
 };
 
-#define advanceFwd(amt) \
-  *((char**) inpLoc) += amt; \
-  *((char**) otpLoc) += amt;
+#define advanceInp(amt) *((char**) inpLoc) += amt;
 
-#define copyBits(amt) \
-  memcpy((void*) *inpLoc, (void*) *otpLoc, amt); \
-  advanceFwd(amt);
+#define copyBits(loc, amt) \
+  memcpy((void*) *inpLoc, (void*) loc, amt); \
+  advanceInp(amt);
 
 #define writeIVal(val) \
   **inpLoc = val; \
-  (*inpLoc)++; \
-  (*otpLoc)++;
+  advanceInp(sizeof(enum ProgramInp));
 
-#define writeID(id) \
-  **((ID**) inpLoc) = id; \
-  (*((ID**) inpLoc))++;
+#define writeID(val) \
+  writeIVal(IIDVal); \
+  **inpLoc = val; \
+  advanceInp(sizeof(ID));
+
+#define advanceOtp(amt) *((char**) inpLoc) += amt;
+
+#define viewOtpAs(name,typ) \
+  typ* name = (typ*) (*otpLoc); \
+  advanceOtp(sizeof(typ));
 
 // TODO throw a const somewhere around otp
 void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc) {
   enum ProgramOtp otpVal = **otpLoc;
+  advanceOtp(sizeof(enum ProgramOtp));
   if (otpVal == OUndef) {
-    writeIVal(IUndef)
+    writeIVal(IUndef);
   } else if (otpVal == OLiteral) {
     writeIVal(ILiteral);
     int amtToCopy = *((int*) *otpLoc) + sizeof(int);
-    copyBits(amtToCopy);
+    copyBits(*otpLoc, amtToCopy);
+    advanceOtp(amtToCopy);
   } else if (otpVal == OTup) {
     writeIVal(ITup);
     evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
     evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
   } else if (otpVal == OIDVal) {
-    writeIVal(IIDVal);
-    copyBits(sizeof(ID));
+    viewOtpAs(id, ID);
+    if (lookup(allowed, *id) == 0) {
+      writeIVal(IUndef);
+    } else {
+      writeID(*id);
+    }
   } else if (otpVal == OToReadMem) {
-    // TODO
+    viewOtpAs(id, ID);
+    if (lookup(allowed, *id) == 0 || getIDType(*id) != MID) {
+      writeIVal(IUndef);
+    } else {
+      delete(&linearIDs, *id);
+      // TODO actually change the memory
+      writeID(*id);
+    }
   } else if (otpVal == OCall) {
     // TODO
   } else if (otpVal == OLitProgram) {
-    bool* linear = (bool*) ((*otpLoc) + 1);
-    struct Program* prog = (struct Program*) ((*linear) + 1);
+    viewOtpAs(linear, bool);
+    viewOtpAs(prog, struct Program);
     if (!sudo && prog->sudo) {
       writeIVal(IUndef);
     } else {
       ID pid = unusedID(&programs, PID);
-      insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method
+      insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method(?)
       if (*linear)
         insert(&linearIDs, pid, 0);
-      writeIVal(IIDVal);
       writeID(pid);
     }
-    *((char**) otpLoc) += sizeof(bool) + sizeof(struct Program);
   } else if (otpVal == OMakeToken) {
-    bool* linear = (bool*) ((*otpLoc) + 1);
+    viewOtpAs(linear, bool);
     ID tid = unusedID(&tokens, TID);
     insert(&tokens, tid, 0);
     if (*linear)
       insert(&linearIDs, tid, 0);
-    writeIVal(IIDVal);
     writeID(tid);
-    *((char**) otpLoc) += sizeof(bool);
   } else if (otpVal == OLitIO) {
+    viewOtpAs(linear, bool);
     if (!sudo) {
       writeIVal(IUndef);
     } else {
-      bool* linear = (bool*) ((*otpLoc) + 1);
       struct IO* io = (struct IO*) ((*linear) + 1);
       ID iid = unusedID(&ios, IID);
       insert(&ios, iid, io);
       if (*linear)
         insert(&linearIDs, iid, 0);
-      writeIVal(IIDVal);
       writeID(iid);
     }
-    *((char**) otpLoc) += sizeof(bool);
   } else if (otpVal == OPointer) {
-    (*otpLoc)++;
     *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
     evalProgramOtp(sudo, allowed, otpLoc, inpLoc);
   }
 }
 
-#undef advanceFwd
+#undef advanceInp
 #undef copyBits
 #undef writeIVal
 #undef writeID
+#undef advanceOtp
+#undef viewOtpAs
 
 int init() {
 }
