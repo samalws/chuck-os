@@ -33,10 +33,9 @@ data TID = TID Int  deriving (Eq, Ord, Show)
 data IID = IID Int  deriving (Eq, Ord, Show)
 data ID = PIDID PID | MIDID MID | TIDID TID | IIDID IID  deriving (Eq, Ord, Show)
 data ProgramInp = IUndef | ILiteral [Int] | ITup ProgramInp ProgramInp | IIDVal ID  deriving Show
-data ProgramOtp = OUndef | OLiteral [Int] | OTup ProgramOtp ProgramOtp | OIDVal ID | OCall Bool {- linear result if partial -} ProgramOtp ProgramOtp | OLitProgram Bool {- linear -} Bool {- sudo -} Int {- arity -} Program | OMakeToken Bool {- linear -} | OLitIO {- only for sudo -} Bool {- linear -} (StateT Env IO ProgramInp)
-data Program = Program ([ProgramInp] -> State (M.Map MID [Int]) ProgramOtp)
+data ProgramOtp = OUndef | OLiteral [Int] | OTup ProgramOtp ProgramOtp | OIDVal ID | OToReadMem MID | OCall Bool {- linear result if partial -} ProgramOtp ProgramOtp | OLitProgram Bool {- linear -} Bool {- sudo -} Int {- arity -} Program | OMakeToken Bool {- linear -} | OLitIO {- only for sudo -} Bool {- linear -} (StateT Env IO ProgramInp)
+data Program = Program ([ProgramInp] -> M.Map MID [Int] -> State (M.Map MID [Int]) ProgramOtp)
 data Env = Env { programs :: M.Map PID (Bool, Int, [ProgramInp], Program), memVals :: M.Map MID [Int], tokens :: S.Set TID, ios :: M.Map IID (StateT Env IO ProgramInp), linearIDs :: S.Set ID }
--- TODO add read-only memory, also executable memory
 -- TODO garbage collection
 
 callNonlin = OCall False
@@ -59,6 +58,7 @@ genIDSetInp (IIDVal id) = S.singleton id
 genIDSetOtp :: ProgramOtp -> S.Set ID
 genIDSetOtp (OTup a b) = genIDSetOtp a <> genIDSetOtp b
 genIDSetOtp (OIDVal id) = S.singleton id
+genIDSetOtp (OToReadMem mid) = S.singleton (MIDID mid)
 genIDSetOtp (OCall _ a b) = genIDSetOtp a <> genIDSetOtp b
 genIDSetOtp _ = mempty
 
@@ -84,22 +84,25 @@ addProgram linear sudo arity args prog = do
   pure pid
 
 evalZeroArityProgram :: Program -> ProgramOtp
-evalZeroArityProgram (Program prog) = evalState (prog []) M.empty
+evalZeroArityProgram (Program prog) = evalState (prog [] M.empty) M.empty
 
 evalProgram :: (Monad m) => Bool -> PID -> ProgramInp -> StateT Env m ProgramOtp
 evalProgram forcePartialLinear callee inp = (M.lookup callee . programs <$> get) >>= \case
   Nothing -> pure OUndef
   Just (_, arity, args, Program prog) | (length args)+1 >= arity -> do -- should never be >
     mem <- gets memVals
-    let (progOtp, mem') = runState runProg mem
+    linears <- gets linearIDs
+    let (progOtp, mem') = runState (runProg linears) mem
     modify (\e -> e { memVals = mem' })
     pure progOtp
     where
-      elimBadKeys = flip M.restrictKeys $ mapMaybeSet mididOnly $ genIDSetInp inp
-      runProg = do
+      -- bool: want linears or nonlinears
+      elimBadKeys b linears = flip M.restrictKeys $ mapMaybeSet mididOnly $ (if b then S.intersection else S.difference) (genIDSetInp inp) linears
+      runProg linears = do
         mem <- get
-        modify elimBadKeys
-        otp <- prog $ reverse (inp:args)
+        modify $ elimBadKeys True linears
+        otp <- prog (reverse (inp:args)) (elimBadKeys False linears mem)
+        modify $ elimBadKeys True linears
         modify (`M.union` mem)
         pure otp
       mididOnly (MIDID mid) = Just mid
@@ -113,6 +116,8 @@ evalProgramOtp _ _ OUndef = pure IUndef
 evalProgramOtp _ _ (OLiteral x) = pure $ ILiteral x
 evalProgramOtp sudo allowed (OTup x y) = linearityCheck x y $ ITup <$> evalProgramOtp sudo allowed x <*> evalProgramOtp sudo allowed y
 evalProgramOtp _ allowed (OIDVal id) = pure $ if id `S.member` allowed then IIDVal id else IUndef
+evalProgramOtp _ allowed (OToReadMem mid) | not (MIDID mid `S.member` allowed) = pure IUndef
+evalProgramOtp _ allowed (OToReadMem mid) = modify (\env -> env { linearIDs = S.delete (MIDID mid) (linearIDs env) }) >> pure (IIDVal $ MIDID mid)
 evalProgramOtp sudo allowed (OCall linear f x) = linearityCheck f x $ do
   f' <- evalProgramOtp sudo allowed f
   x' <- evalProgramOtp sudo allowed x
@@ -155,25 +160,25 @@ runProgram callee = evalProgram False callee >=> evalPidOtp callee >=> runInp
 
 pureProg :: Program
 pureProg = Program f where
-  f [a] = pure $ OLitIO True {- TODO -} $ pure a
-  f _ = pure OUndef
+  f [a] _ = pure $ OLitIO True {- TODO -} $ pure a
+  f _ _ = pure OUndef
 
 -- TODO what is this called other than bind?
 thenProg :: Program
 thenProg = Program f where
-  f [a, b] = pure $ OLitIO True {- TODO -} $ runInp a >> runInp b
-  f _ = pure OUndef
+  f [a, b] _ = pure $ OLitIO True {- TODO -} $ runInp a >> runInp b
+  f _ _ = pure OUndef
 
 bindProg :: Program
 bindProg = Program f where
-  f [a, b] = pure $ OLitIO True {- TODO -} $ runInp a >>= (\ioOtp -> runOtp True (inpToOtp b `callNonlin` inpToOtp ioOtp))
+  f [a, b] _ = pure $ OLitIO True {- TODO -} $ runInp a >>= (\ioOtp -> runOtp True (inpToOtp b `callNonlin` inpToOtp ioOtp))
   -- the True is irrelevant, since sudo doesn't matter for OCall, or for anything returned by inpToOtp
-  f _ = pure OUndef
+  f _ _ = pure OUndef
 
 printProg :: Program
 printProg = Program f where
-  f [ILiteral x] = pure $ OLitIO False $ lift (print x) >> pure (ILiteral [])
-  f _ = pure OUndef
+  f [ILiteral x] _ = pure $ OLitIO False $ lift (print x) >> pure (ILiteral [])
+  f _ _ = pure OUndef
 
 readLnIO :: StateT Env IO ProgramInp
 readLnIO = ILiteral <$> lift readLn
@@ -190,16 +195,16 @@ starterEnv = def { programs = M.fromList [(PID 0, (True, 1, [], pureProg)), (PID
 
 helloWorldProg :: Program
 helloWorldProg = Program f where
-  f [print_] = pure $ callNonlin (inpToOtp print_) (OLiteral [1,2,3])
-  f _ = pure OUndef
+  f [print_] _ = pure $ callNonlin (inpToOtp print_) (OLiteral [1,2,3])
+  f _ _ = pure OUndef
 
 exampleProg :: Program
 exampleProg = Program f where
-  f (fmap inpToOtp -> [pure_, then_, bind_, print_, readLn_, getMem_])
+  f (fmap inpToOtp -> [pure_, then_, bind_, print_, readLn_, getMem_]) _
     = pure $ callNonlin (callNonlin bind_ readLn_) (callNonlin (OLitProgram False False 2 $ Program g) print_)
-  f _ = pure OUndef
-  g [print_, ILiteral l] = pure $ callNonlin (inpToOtp print_) (OLiteral (65:l))
-  g _ = pure OUndef
+  f _ _ = pure OUndef
+  g [print_, ILiteral l] _ = pure $ callNonlin (inpToOtp print_) (OLiteral (65:l))
+  g _ _ = pure OUndef
 
 progsEnv :: Env
 progsEnv = starterEnv { programs = programs starterEnv <> M.fromList [(PID 4, (False, 1, [], helloWorldProg)), (PID 5, (False, 6, [], exampleProg))] }
