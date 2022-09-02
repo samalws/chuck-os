@@ -1,6 +1,8 @@
 nasm -w-other -f elf32 start.s \
-&& i686-elf-gcc -ffreestanding -nostdlib -T linker.ld start.o -o mykernel.elf -lgcc \
-&& rm start.o
+&& i686-elf-gcc -std=gnu99 -ffreestanding -c kernel.c -o kernel.o \
+&& i686-elf-gcc -ffreestanding -nostdlib -T linker.ld start.o kernel.o -o mykernel.elf -lgcc \
+&& rm start.o \
+&& rm kernel.o
 
 # to add a c file:
 # i686-elf-gcc -std=gnu99 -ffreestanding -c kernel.c -o kernel.o
