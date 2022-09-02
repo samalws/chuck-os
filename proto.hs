@@ -39,7 +39,6 @@ data Program = Program ([ProgramInp] -> M.Map MID [Int] -> State (M.Map MID [Int
 data Env = Env { programs :: M.Map PID (Bool, Int, [ProgramInp], Program), memVals :: M.Map MID [Int], tokens :: S.Set TID, ios :: M.Map IID (StateT Env IO ProgramInp), linearIDs :: S.Set ID }
 
 -- TODO garbage collect nonlinear values
--- TODO garbage collect an IO when you use it
 
 callNonlin = OCall False
 
@@ -104,35 +103,35 @@ iididOnly _ = Nothing
 removeFromLinearIDs :: (Monad m) => ID -> StateT Env m ()
 removeFromLinearIDs id = modify (\env -> env { linearIDs = S.delete id (linearIDs env) })
 
-gcPid :: (Monad m) => PID -> StateT Env m ()
-gcPid pid = do
+gcPID :: (Monad m) => PID -> StateT Env m ()
+gcPID pid = do
   removeFromLinearIDs (PIDID pid)
   modify (\env -> env { programs = M.delete pid (programs env) })
 
-gcMid :: (Monad m) => MID -> StateT Env m ()
-gcMid mid = do
+gcMID :: (Monad m) => MID -> StateT Env m ()
+gcMID mid = do
   removeFromLinearIDs (MIDID mid)
   modify (\env -> env { memVals = M.delete mid (memVals env) })
 
-gcTid :: (Monad m) => TID -> StateT Env m ()
-gcTid tid = do
+gcTID :: (Monad m) => TID -> StateT Env m ()
+gcTID tid = do
   removeFromLinearIDs (TIDID tid)
   modify (\env -> env { tokens = S.delete tid (tokens env) })
 
-gcIid :: (Monad m) => IID -> StateT Env m ()
-gcIid iid = do
+gcIID :: (Monad m) => IID -> StateT Env m ()
+gcIID iid = do
   removeFromLinearIDs (IIDID iid)
   modify (\env -> env { ios = M.delete iid (ios env) })
 
-gcId :: (Monad m) => ID -> StateT Env m ()
-gcId id = do
-  maybe (pure ()) gcPid (pididOnly id)
-  maybe (pure ()) gcMid (mididOnly id)
-  maybe (pure ()) gcTid (tididOnly id)
-  maybe (pure ()) gcIid (iididOnly id)
+gcID :: (Monad m) => ID -> StateT Env m ()
+gcID id = do
+  maybe (pure ()) gcPID (pididOnly id)
+  maybe (pure ()) gcMID (mididOnly id)
+  maybe (pure ()) gcTID (tididOnly id)
+  maybe (pure ()) gcIID (iididOnly id)
 
 gcItems :: (Monad m) => S.Set ID -> StateT Env m ()
-gcItems ids = void $ sequence (gcId <$> S.toList ids)
+gcItems ids = void $ sequence (gcID <$> S.toList ids)
 
 evalProgram :: (Monad m) => Bool -> PID -> ProgramInp -> StateT Env m ProgramOtp
 evalProgram forcePartialLinear callee inp = (M.lookup callee . programs <$> get) >>= \case
@@ -193,7 +192,11 @@ evalPidOtp callee otp = do
   evalProgramOtp sudo (genIDSetOtp otp) otp
 
 runIO :: IID -> StateT Env IO ProgramInp
-runIO iid = gets (M.lookup iid . ios) >>= fromMaybe (pure IUndef)
+runIO iid = do
+  io <- gets (M.lookup iid . ios)
+  isLinear <- gets (S.member (IIDID iid) . linearIDs)
+  when isLinear $ gcIID iid
+  fromMaybe (pure IUndef) io
 
 runInp :: ProgramInp -> StateT Env IO ProgramInp
 runInp (IIDVal (IIDID iid)) = runIO iid
