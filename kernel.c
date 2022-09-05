@@ -1,3 +1,18 @@
+// TODO:
+
+// "non-technical":
+// eval IO stand-in function
+// fill in some arguments for prog2 in evalProgram
+// fix up sudo and allowed when calling fns
+// master function corresponding to runProgram in haskell
+
+// "technical":
+// get assembly to call this C code; test stuff eg maps out (probably the easiest)
+// real IO (probably the second easiest)
+// figure out where to malloc stuff (prog arguments, ProgramOutput and ProgramInput)
+// real memory allocation
+// real process calls
+
 typedef enum { false, true } bool;
 
 void memcpy(void* dest, const void* src, int n) {
@@ -152,6 +167,10 @@ enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Pro
 
 #define advanceInp(amt) *((char**) inpLoc) += amt;
 
+#define viewInpAs(name,typ) \
+  typ* name = (typ*) (*inpLoc); \
+  advanceInp(sizeof(typ));
+
 #define copyBits(loc, amt) \
   memcpy((void*) *inpLoc, (void*) loc, amt); \
   advanceInp(amt);
@@ -165,7 +184,7 @@ enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Pro
   **inpLoc = val; \
   advanceInp(sizeof(ID));
 
-#define advanceOtp(amt) *((char**) inpLoc) += amt;
+#define advanceOtp(amt) *((char**) otpLoc) += amt;
 
 #define viewOtpAs(name,typ) \
   typ* name = (typ*) (*otpLoc); \
@@ -244,10 +263,10 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
     writeID(tid);
   } else if (otpVal == OLitIO) {
     viewOtpAs(linear, bool);
+    viewOtpAs(io, struct IO);
     if (!sudo) {
       writeIVal(IUndef);
     } else {
-      struct IO* io = (struct IO*) ((*linear) + 1);
       ID iid = unusedID(&ios, IID);
       insert(&ios, iid, io);
       if (*linear)
@@ -261,7 +280,60 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
   }
 }
 
+// copypasted from evalProgramOtp and then modified
+void genIDSetOtp(struct IDMap* set, enum ProgramOtp** otpLoc) {
+  enum ProgramOtp otpVal = **otpLoc;
+  advanceOtp(sizeof(enum ProgramOtp));
+  if (otpVal == OUndef) {
+  } else if (otpVal == OLiteral) {
+    int amtToCopy = *((int*) *otpLoc) + sizeof(int);
+    advanceOtp(amtToCopy);
+  } else if (otpVal == OTup) {
+    genIDSetOtp(set, otpLoc);
+    genIDSetOtp(set, otpLoc);
+  } else if (otpVal == OIDVal) {
+    viewOtpAs(id, ID);
+    insert(set, *id, 0);
+  } else if (otpVal == OToReadMem) {
+    viewOtpAs(id, ID);
+    insert(set, *id, 0);
+  } else if (otpVal == OCall) {
+    viewOtpAs(forcePartialLinear, bool);
+    genIDSetOtp(set, otpLoc);
+    genIDSetOtp(set, otpLoc);
+  } else if (otpVal == OLitProgram) {
+    viewOtpAs(linear, bool);
+    viewOtpAs(prog, struct Program);
+  } else if (otpVal == OMakeToken) {
+    viewOtpAs(linear, bool);
+  } else if (otpVal == OLitIO) {
+    viewOtpAs(linear, bool);
+    viewOtpAs(io, struct IO);
+  } else if (otpVal == OPointer) {
+    // TODO typically we don't want to let the user access this
+    *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
+    genIDSetOtp(set, otpLoc);
+  }
+}
+
+void genIDSetInp(struct IDMap* set, enum ProgramInp** inpLoc) {
+  enum ProgramInp inpVal = **inpLoc;
+  advanceInp(sizeof(enum ProgramInp));
+  if (inpVal == IUndef) {
+  } else if (inpVal == ILiteral) {
+    int amtToCopy = *((int*) *inpLoc) + sizeof(int);
+    advanceInp(amtToCopy);
+  } else if (inpVal == ITup) {
+    genIDSetInp(set, inpLoc);
+    genIDSetInp(set, inpLoc);
+  } else if (inpVal == IIDVal) {
+    viewInpAs(id, ID);
+    insert(set, *id, 0);
+  }
+}
+
 #undef advanceInp
+#undef viewInpAs
 #undef copyBits
 #undef writeIVal
 #undef writeID
