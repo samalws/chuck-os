@@ -156,17 +156,23 @@ enum ProgramOtp* runProgram(struct Program* prog) {
   return 0; // TODO
 }
 
-enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Program* prog, enum ProgramInp* inp) {
+enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Program* prog, enum ProgramInp* inpLoc) {
   struct Program prog2; // TODO
   if (prog2.argsGiven >= prog2.arity) {
     return runProgram(&prog2);
   } else {
     ID pid = unusedID(&programs, PID);
     insert(&programs, pid, &prog2);
-    bool linear = forcePartialLinear || wasLinear; /* || inp linear TODO */
+    bool linear = forcePartialLinear || wasLinear; /* || inpLoc linear TODO */
     if (linear)
       insert(&linearIDs, pid, 0);
   }
+}
+
+enum ProgramOtp* evalPID(bool forcePartialLinear, ID pid, enum ProgramInp* inpLoc) {
+  bool wasLinear = lookup(&linearIDs, pid) != 0;
+  struct Program* prog = lookup(&programs, pid);
+  return evalProgram(forcePartialLinear, wasLinear, prog, inpLoc);
 }
 
 #define advanceInp(amt) *((char**) inpLoc) += amt;
@@ -193,6 +199,58 @@ enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Pro
 #define viewOtpAs(name,typ) \
   typ* name = (typ*) (*otpLoc); \
   advanceOtp(sizeof(typ));
+
+// copypasted from evalProgramOtp and then modified
+void genIDSetOtp(struct IDMap* set, enum ProgramOtp** otpLoc) {
+  enum ProgramOtp otpVal = **otpLoc;
+  advanceOtp(sizeof(enum ProgramOtp));
+  if (otpVal == OUndef) {
+  } else if (otpVal == OLiteral) {
+    int amtToCopy = *((int*) *otpLoc) + sizeof(int);
+    advanceOtp(amtToCopy);
+  } else if (otpVal == OTup) {
+    genIDSetOtp(set, otpLoc);
+    genIDSetOtp(set, otpLoc);
+  } else if (otpVal == OIDVal) {
+    viewOtpAs(id, ID);
+    insert(set, *id, 0);
+  } else if (otpVal == OToReadMem) {
+    viewOtpAs(id, ID);
+    insert(set, *id, 0);
+  } else if (otpVal == OCall) {
+    viewOtpAs(forcePartialLinear, bool);
+    genIDSetOtp(set, otpLoc);
+    genIDSetOtp(set, otpLoc);
+  } else if (otpVal == OLitProgram) {
+    viewOtpAs(linear, bool);
+    viewOtpAs(prog, struct Program);
+  } else if (otpVal == OMakeToken) {
+    viewOtpAs(linear, bool);
+  } else if (otpVal == OLitIO) {
+    viewOtpAs(linear, bool);
+    viewOtpAs(io, struct IO);
+  } else if (otpVal == OPointer) {
+    // TODO typically we don't want to let the user access this
+    *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
+    genIDSetOtp(set, otpLoc);
+  }
+}
+
+void genIDSetInp(struct IDMap* set, enum ProgramInp** inpLoc) {
+  enum ProgramInp inpVal = **inpLoc;
+  advanceInp(sizeof(enum ProgramInp));
+  if (inpVal == IUndef) {
+  } else if (inpVal == ILiteral) {
+    int amtToCopy = *((int*) *inpLoc) + sizeof(int);
+    advanceInp(amtToCopy);
+  } else if (inpVal == ITup) {
+    genIDSetInp(set, inpLoc);
+    genIDSetInp(set, inpLoc);
+  } else if (inpVal == IIDVal) {
+    viewInpAs(id, ID);
+    insert(set, *id, 0);
+  }
+}
 
 // TODO throw a const somewhere around otp
 void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc) {
@@ -284,56 +342,16 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
   }
 }
 
-// copypasted from evalProgramOtp and then modified
-void genIDSetOtp(struct IDMap* set, enum ProgramOtp** otpLoc) {
-  enum ProgramOtp otpVal = **otpLoc;
-  advanceOtp(sizeof(enum ProgramOtp));
-  if (otpVal == OUndef) {
-  } else if (otpVal == OLiteral) {
-    int amtToCopy = *((int*) *otpLoc) + sizeof(int);
-    advanceOtp(amtToCopy);
-  } else if (otpVal == OTup) {
-    genIDSetOtp(set, otpLoc);
-    genIDSetOtp(set, otpLoc);
-  } else if (otpVal == OIDVal) {
-    viewOtpAs(id, ID);
-    insert(set, *id, 0);
-  } else if (otpVal == OToReadMem) {
-    viewOtpAs(id, ID);
-    insert(set, *id, 0);
-  } else if (otpVal == OCall) {
-    viewOtpAs(forcePartialLinear, bool);
-    genIDSetOtp(set, otpLoc);
-    genIDSetOtp(set, otpLoc);
-  } else if (otpVal == OLitProgram) {
-    viewOtpAs(linear, bool);
-    viewOtpAs(prog, struct Program);
-  } else if (otpVal == OMakeToken) {
-    viewOtpAs(linear, bool);
-  } else if (otpVal == OLitIO) {
-    viewOtpAs(linear, bool);
-    viewOtpAs(io, struct IO);
-  } else if (otpVal == OPointer) {
-    // TODO typically we don't want to let the user access this
-    *otpLoc = **((enum ProgramOtp***) otpLoc); // wtf?
-    genIDSetOtp(set, otpLoc);
-  }
-}
-
-void genIDSetInp(struct IDMap* set, enum ProgramInp** inpLoc) {
-  enum ProgramInp inpVal = **inpLoc;
-  advanceInp(sizeof(enum ProgramInp));
-  if (inpVal == IUndef) {
-  } else if (inpVal == ILiteral) {
-    int amtToCopy = *((int*) *inpLoc) + sizeof(int);
-    advanceInp(amtToCopy);
-  } else if (inpVal == ITup) {
-    genIDSetInp(set, inpLoc);
-    genIDSetInp(set, inpLoc);
-  } else if (inpVal == IIDVal) {
-    viewInpAs(id, ID);
-    insert(set, *id, 0);
-  }
+void evalPIDOtp(ID pid, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc) {
+  struct Program* prog = lookup(&programs, pid);
+  bool sudo = false; // default 0 doesn't matter much; otp should be OUndef if lookup returns 0
+  if (prog != 0)
+    sudo = prog->sudo;
+  defineSet(allowed, 100);
+  enum ProgramInp* inpLocBackup = *inpLoc;
+  genIDSetInp(&allowed, inpLoc);
+  *inpLoc = inpLocBackup;
+  evalProgramOtp(sudo, &allowed, otpLoc, inpLoc);
 }
 
 enum ProgramInp* runIID(ID iid) {
@@ -347,7 +365,7 @@ enum ProgramInp* runIID(ID iid) {
   return runIO(io);
 }
 
-enum ProgramInp* runInp(enum ProgramInp** inpLoc) {
+enum ProgramInp* runInpIO(enum ProgramInp** inpLoc) {
   enum ProgramInp inpVal = **inpLoc;
   advanceInp(sizeof(enum ProgramInp));
   if (inpVal == IIDVal) {
@@ -359,13 +377,22 @@ enum ProgramInp* runInp(enum ProgramInp** inpLoc) {
   }
 }
 
-enum ProgramInp* runOtp(bool sudo, enum ProgramOtp* otpLoc) {
+enum ProgramInp* runOtpIO(bool sudo, enum ProgramOtp* otpLoc) {
   enum ProgramOtp* otpLocBackup = otpLoc;
   defineSet(allowed, 100);
   genIDSetOtp(&allowed, &otpLoc);
   otpLoc = otpLocBackup;
   evalProgramOtp(sudo, &allowed, &otpLoc, 0 /* TODO */);
-  return runInp(0 /* TODO */);
+  return runInpIO(0 /* TODO */);
+}
+
+enum ProgramInp* runPIDIO(ID pid, enum ProgramInp* inpLoc) {
+  enum ProgramOtp* otpLoc = evalPID(false, pid, inpLoc);
+  enum ProgramInp* inpLoc2 = inpLoc; // TODO can we cannibalize inpLoc?
+  enum ProgramInp* inpLoc2Backup = inpLoc2;
+  evalPIDOtp(pid, &otpLoc, &inpLoc2); // TODO could use better variable names :P
+  inpLoc2 = inpLoc2Backup;
+  return runInpIO(&inpLoc2);
 }
 
 #undef advanceInp
