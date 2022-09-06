@@ -1,10 +1,9 @@
 // TODO:
 
 // "non-technical":
-// eval IO stand-in function
 // fill in some arguments for prog2 in evalProgram
 // fix up sudo and allowed when calling fns
-// master function corresponding to runProgram in haskell
+// gc, linearity check
 
 // "technical":
 // get assembly to call this C code; test stuff eg maps out (probably the easiest)
@@ -100,6 +99,11 @@ struct IO {
   void* input;
   void* startPoint;
 };
+
+enum ProgramInp* runIO(struct IO* io) {
+  // TODO
+  return 0;
+}
 
 #define defineMap(name,capac,valType) \
 ID name##Keys[capac]; \
@@ -330,6 +334,38 @@ void genIDSetInp(struct IDMap* set, enum ProgramInp** inpLoc) {
     viewInpAs(id, ID);
     insert(set, *id, 0);
   }
+}
+
+enum ProgramInp* runIID(ID iid) {
+  if (getIDType(iid) != IID) return 0; // TODO IUndef
+
+  struct IO* io = lookup(&ios, iid);
+  if (io == 0) return 0; // TODO IUndef
+
+  // TODO gc if linear
+
+  return runIO(io);
+}
+
+enum ProgramInp* runInp(enum ProgramInp** inpLoc) {
+  enum ProgramInp inpVal = **inpLoc;
+  advanceInp(sizeof(enum ProgramInp));
+  if (inpVal == IIDVal) {
+    viewInpAs(id, ID);
+    return runIID(*id);
+  } else {
+    // TODO IUndef
+    return 0;
+  }
+}
+
+enum ProgramInp* runOtp(bool sudo, enum ProgramOtp* otpLoc) {
+  enum ProgramOtp* otpLocBackup = otpLoc;
+  defineSet(allowed, 100);
+  genIDSetOtp(&allowed, &otpLoc);
+  otpLoc = otpLocBackup;
+  evalProgramOtp(sudo, &allowed, &otpLoc, 0 /* TODO */);
+  return runInp(0 /* TODO */);
 }
 
 #undef advanceInp
