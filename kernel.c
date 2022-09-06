@@ -2,7 +2,6 @@
 
 // "non-technical":
 // fill in some arguments for prog2 in evalProgram
-// fix up sudo and allowed when calling fns
 // gc, linearity check
 
 // "technical":
@@ -252,6 +251,8 @@ void genIDSetInp(struct IDMap* set, enum ProgramInp** inpLoc) {
   }
 }
 
+void evalPIDOtp(ID pid, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc);
+
 // TODO throw a const somewhere around otp
 void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, enum ProgramInp** inpLoc) {
   enum ProgramOtp otpVal = **otpLoc;
@@ -296,10 +297,9 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
     if (*fnLoc != IIDVal || lookup(allowed, pid) == 0 || prog == 0) {
       writeIVal(IUndef);
     } else {
-      bool wasLinear = lookup(&linearIDs, pid) != 0; // yes, I know I can leave out the "!= 0"
-      evalProgram(*forcePartialLinear, wasLinear, prog, fnInp);
+      evalPID(*forcePartialLinear, pid, fnInp);
       *inpLoc = oldInpLoc;
-      evalProgramOtp(sudo, allowed, otpLoc, inpLoc); // TODO sudo and allowed need to change
+      evalPIDOtp(pid, otpLoc, inpLoc);
     }
   } else if (otpVal == OLitProgram) {
     viewOtpAs(linear, bool);
@@ -308,7 +308,11 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
       writeIVal(IUndef);
     } else if (prog->arity == 0) {
       *otpLoc = runProgram(prog);
-      evalProgramOtp(sudo, allowed, otpLoc, inpLoc); // TODO sudo and allowed need to change
+      defineSet(allowed, 100);
+      enum ProgramOtp* otpLocBackup = *otpLoc;
+      genIDSetOtp(&allowed, otpLoc);
+      *otpLoc = otpLocBackup;
+      evalProgramOtp(prog->sudo, &allowed, otpLoc, inpLoc);
     } else {
       ID pid = unusedID(&programs, PID);
       insert(&programs, pid, prog); // TODO program creation should be broken off into a separate method(?)
