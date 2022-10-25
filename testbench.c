@@ -2,14 +2,14 @@
 #include <stdlib.h>
 #include "kernel.h"
 
-enum ProgramInp* runIO(struct IO* io) {
-  enum ProgramInp* (*asFunction) (void*) = io->startPoint;
-  return asFunction(io->input);
+void runIO(struct IO* io, enum ProgramInp* otpLoc) {
+  void (*asFunction) (void*, enum ProgramInp*) = io->startPoint;
+  asFunction(io->input, otpLoc);
 }
 
-enum ProgramOtp* runProgram(struct Program* prog) {
-  enum ProgramOtp* (*asFunction) (void*) = prog->startPoint;
-  return asFunction(prog->inputs);
+void runProgram(struct Program* prog, enum ProgramOtp* otpLoc) {
+  void (*asFunction) (void*, enum ProgramOtp*) = prog->startPoint;
+  asFunction(prog->inputs, otpLoc);
 }
 
 ID allocMID(int size) {

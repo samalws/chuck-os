@@ -47,7 +47,6 @@
 
 #include "main.h"
 
-// TODO should be shared
 enum IDType getIDType(ID id) {
   return id & 3;
 }
@@ -104,6 +103,14 @@ ID unusedID(struct IDMap* map, enum IDType type) {
   return (map->size >> 2) | type; // TODO
 }
 
+enum ProgramInp* mallocProgramInp() { // TODO takes execution env
+  return 0; // TODO
+}
+
+enum ProgramOtp* mallocProgramOtp() { // TODO takes execution env
+  return 0; // TODO
+}
+
 #define defineMap(name,capac,valType) \
 ID name##Keys[capac]; \
 valType name##Vals[capac]; \
@@ -134,7 +141,9 @@ defineSet(linearIDs, 100);
 enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Program* prog, enum ProgramInp* inpLoc) {
   struct Program prog2; // TODO
   if (prog2.argsGiven >= prog2.arity) {
-    return runProgram(&prog2);
+    enum ProgramOtp* otpLoc = mallocProgramOtp();
+    runProgram(&prog2, otpLoc);
+    return otpLoc;
   } else {
     ID pid = unusedID(&programs, PID);
     insert(&programs, pid, &prog2);
@@ -283,7 +292,8 @@ void evalProgramOtp(bool sudo, struct IDMap* allowed, enum ProgramOtp** otpLoc, 
     if (!sudo && prog->sudo) {
       writeIVal(IUndef);
     } else if (prog->arity == 0) {
-      *otpLoc = runProgram(prog);
+      *otpLoc = mallocProgramOtp();
+      runProgram(prog, *otpLoc);
       defineSet(allowed, 100);
       enum ProgramOtp* otpLocBackup = *otpLoc;
       genIDSetOtp(&allowed, otpLoc);
@@ -342,7 +352,9 @@ enum ProgramInp* runIID(ID iid) {
 
   // TODO gc if linear
 
-  return runIO(io);
+  enum ProgramInp* otpLoc = mallocProgramInp();
+  runIO(io, otpLoc);
+  return otpLoc;
 }
 
 enum ProgramInp* runInpIO(enum ProgramInp** inpLoc) {
