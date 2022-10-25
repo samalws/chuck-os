@@ -1,5 +1,10 @@
 global start
 
+global runIO
+global runProgram
+global allocMID
+global freeMID
+
 ; code-wide standard:
 ; when dealing with VGA, ecx is row and edx is col
 
@@ -298,3 +303,9 @@ ret
 
 retLbl:
 ret
+
+; things we're supposed to define from main.h:
+runIO:
+runProgram:
+allocMID:
+freeMID:

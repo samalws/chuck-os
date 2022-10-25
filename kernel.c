@@ -1,3 +1,37 @@
+// notes from future me:
+// "memory environments"
+//   program execution has a fixed amount of memory for managing stuff
+//   should "raise an exception" if we're out of memory and "catch" at some point using IO for catch
+//   this catch will allow for feeding more memory (MIDs) or killing the task
+//   when I make the scheduler this will be part of it: not only what programs are running but also what memory environment they're in
+// should do two passes for evalProgramOtp:
+//   one to add stuff that needs to be run to the scheduler,
+//   and another to fill in values from the scheduler
+//   scheduler should record function outputs temporarily until they're needed
+// I ought to do tail call elimination later on (how?)
+//   really only applies when a function returns "call f x"
+//   in general, how do we avoid call stacks getting really long?
+// as long as program output memory chunk sizes are limited (they will be),
+//   the recursion depth will be bounded, so we should never need to grab new memory except for making new MIDs
+// we need two malloc functions:
+//   one for mallocing a program IO chunk within a memory environment (easy because theyre all the same size),
+//   and one for mallocing a new MID (also easy if we make them all the same size)
+// on my computer, page size is 4096 bytes which is really small; MIDs should be bigger; maybe we should make them be non fixed size
+//   also ideally program IO chunks should be non fixed size as well, so lightweight programs can return small stuff but big programs can return a lot
+//   how to specify a program IO chunk size?
+//   either specify at the function literal level (easier),
+//   or when returning from the function (more versatile; really you dont even need to specify, it can be implicit; unused IO memory gets freed right away)
+//     this is the better solution
+//   ideally we could just memcpy the function return values to a safe place and reuse the return memory chunk
+//     only good if the fn return value isnt too big (shouldnt be; should be a page at most "ie" 4096 bytes which is trivial-ish to copy)
+// scheduler needs to make a dependency graph of processes and then run the ones at the "top"
+//   this might just be a call stack lol
+//   only on single core, that is
+//   so good enough for now but later we should improve on it
+// scheduler should also include a list of IO to run
+//   doesnt matter that we keep it in "sequential order" since if two IOs are on top, then they must be forked, independent tasks,
+//   rather than 1 depends on the other
+
 // TODO:
 
 // "non-technical":
@@ -11,9 +45,14 @@
 // real memory allocation
 // real process calls
 
-typedef enum { false, true } bool;
+#include "main.h"
 
-void memcpy(void* dest, const void* src, int n) {
+// TODO should be shared
+enum IDType getIDType(ID id) {
+  return id & 3;
+}
+
+void* memcpy(void* dest, const void* src, long unsigned n) {
   char* dest_ = dest;
   const char* src_ = src;
   while (n > 0) {
@@ -22,29 +61,8 @@ void memcpy(void* dest, const void* src, int n) {
     src_++;
     n--;
   }
+  return dest;
 }
-
-typedef int ID;
-
-enum IDType {
-  PID,
-  MID,
-  TID,
-  IID
-};
-
-enum IDType getIDType(ID id) {
-  return id & 3;
-}
-
-// TODO all map functions are really inefficient
-struct IDMap {
-  int capacity;
-  int size;
-  int valSize;
-  ID* keys;
-  void* vals;
-};
 
 void* lookup(struct IDMap* map, ID key) {
   for (int i = 0; i < map->size; i++)
@@ -86,24 +104,6 @@ ID unusedID(struct IDMap* map, enum IDType type) {
   return (map->size >> 2) | type; // TODO
 }
 
-struct Program {
-  bool sudo;
-  int arity;
-  int argsGiven;
-  void* inputs;
-  void* startPoint;
-};
-
-struct IO {
-  void* input;
-  void* startPoint;
-};
-
-enum ProgramInp* runIO(struct IO* io) {
-  // TODO
-  return 0;
-}
-
 #define defineMap(name,capac,valType) \
 ID name##Keys[capac]; \
 valType name##Vals[capac]; \
@@ -130,30 +130,6 @@ defineMap(memBlks, 100, void*);
 defineSet(tokens, 100);
 defineMap(ios, 100, struct IO);
 defineSet(linearIDs, 100);
-
-enum ProgramInp {
-  IUndef,
-  ILiteral,
-  ITup,
-  IIDVal
-};
-
-enum ProgramOtp {
-  OUndef,
-  OLiteral,
-  OTup,
-  OIDVal,
-  OToReadMem,
-  OCall,
-  OLitProgram,
-  OMakeToken,
-  OLitIO,
-  OPointer
-};
-
-enum ProgramOtp* runProgram(struct Program* prog) {
-  return 0; // TODO
-}
 
 enum ProgramOtp* evalProgram(bool forcePartialLinear, bool wasLinear, struct Program* prog, enum ProgramInp* inpLoc) {
   struct Program prog2; // TODO
@@ -407,5 +383,5 @@ enum ProgramInp* runPIDIO(ID pid, enum ProgramInp* inpLoc) {
 #undef advanceOtp
 #undef viewOtpAs
 
-int init() {
+int kernelMain() {
 }
