@@ -373,5 +373,10 @@ enum ProgramInp* runPIDIO(ID pid, enum ProgramInp* inpLoc) {
 #undef advanceOtp
 #undef viewOtpAs
 
-int kernelMain() {
+void* kernelMain() {
+  struct IO exampleIO = {
+    input: exampleIOInput,
+    startPoint: (void*) exampleIOStartPoint
+  };
+  runIO(&exampleIO, 0);
 }

@@ -1,5 +1,7 @@
 global start
 
+global exampleIOStartPoint
+global exampleIOInput
 global runIO
 global runProgram
 global allocMID
@@ -45,6 +47,7 @@ section .data
 welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
 isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
 isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
+inIO db "We're in IO", BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -84,8 +87,8 @@ call checkEax
 call loadGdt
 call loadIdt
 call enterRing3
-call kernelMain
 call asmKernelMain
+call kernelMain
 .loop:
 jmp .loop
 
@@ -224,6 +227,15 @@ call printStr
 call stdVgaWrite
 ret
 
+printNumberStd:
+; eax: number to write
+; uses global vars vgaRow and vgaCol
+mov ebx, eax
+call stdVgaRead
+call printNumber
+call stdVgaWrite
+ret
+
 clearScreenStd:
 ; uses global vars vgaRow and vgaCol
 call clearScreen
@@ -289,6 +301,46 @@ mov edx, 0
 inc ecx
 ret
 
+printNumber:
+; ebx: number to write
+; ecx, edx: coord
+; clobbers eax and ebx
+mov eax, 32
+push eax
+jmp .body
+
+.loop:
+pop eax
+dec eax
+cmp eax, 0
+je .done
+push eax
+
+.body:
+mov eax, ebx
+push ebx
+and eax, 0x80000000
+cmp eax, 0
+je .zeroCase
+
+.oneCase:
+mov bl, '1'
+jmp .after
+
+.zeroCase:
+mov bl, '0'
+
+.after:
+call writeChar
+call vgaInc
+pop ebx
+shl ebx, 1
+jmp .loop
+
+.done:
+call vgaNewline
+ret
+
 writeChar:
 ; bl: character to write
 ; ecx, edx: coord
@@ -308,7 +360,18 @@ retLbl:
 ret
 
 ; things we're supposed to define from main.h:
+
+exampleIOStartPoint:
+mov eax, inIO
+call printStrStd
+ret
+
 runIO:
+mov eax, [esp+4]
+call [eax+4]
+ret
+
+exampleIOInput:
 runProgram:
 allocMID:
 freeMID:

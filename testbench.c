@@ -2,6 +2,12 @@
 #include <stdlib.h>
 #include "kernel.h"
 
+void* exampleIOInput = 0;
+
+void* exampleIOStartPoint() {
+  printf("We're in IO\n");
+}
+
 void runIO(struct IO* io, enum ProgramInp* otpLoc) {
   void (*asFunction) (void*, enum ProgramInp*) = io->startPoint;
   asFunction(io->input, otpLoc);
