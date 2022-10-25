@@ -5,6 +5,8 @@ global runProgram
 global allocMID
 global freeMID
 
+extern kernelMain
+
 ; code-wide standard:
 ; when dealing with VGA, ecx is row and edx is col
 
@@ -83,6 +85,7 @@ call loadGdt
 call loadIdt
 call enterRing3
 call kernelMain
+call asmKernelMain
 .loop:
 jmp .loop
 
@@ -201,7 +204,7 @@ push retLbl
 iret
 jmp hang
 
-kernelMain:
+asmKernelMain:
 call clearScreenStd
 mov eax, welcome
 call printStrStd

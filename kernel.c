@@ -39,7 +39,6 @@
 // gc, linearity check
 
 // "technical":
-// get assembly to call this C code; test stuff eg maps out (probably the easiest)
 // real IO (probably the second easiest)
 // figure out where to malloc stuff (prog arguments, ProgramOutput and ProgramInput)
 // real memory allocation
@@ -110,27 +109,6 @@ enum ProgramInp* mallocProgramInp() { // TODO takes execution env
 enum ProgramOtp* mallocProgramOtp() { // TODO takes execution env
   return 0; // TODO
 }
-
-#define defineMap(name,capac,valType) \
-ID name##Keys[capac]; \
-valType name##Vals[capac]; \
-struct IDMap name = { \
-  .capacity = capac, \
-  .size = 0, \
-  .valSize = sizeof(valType), \
-  .keys = name##Keys, \
-  .vals = name##Vals \
-};
-
-#define defineSet(name,capac) \
-ID name##Keys[capac]; \
-struct IDMap name = { \
-  .capacity = capac, \
-  .size = 0, \
-  .valSize = 0, \
-  .keys = name##Keys, \
-  .vals = (void*) 1 \
-};
 
 defineMap(programs, 100, struct Program);
 defineMap(memBlks, 100, void*);

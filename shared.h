@@ -51,3 +51,24 @@ enum ProgramOtp {
   OLitIO,
   OPointer
 };
+
+#define defineMap(name,capac,valType) \
+ID name##Keys[capac]; \
+valType name##Vals[capac]; \
+struct IDMap name = { \
+  .capacity = capac, \
+  .size = 0, \
+  .valSize = sizeof(valType), \
+  .keys = name##Keys, \
+  .vals = name##Vals \
+};
+
+#define defineSet(name,capac) \
+ID name##Keys[capac]; \
+struct IDMap name = { \
+  .capacity = capac, \
+  .size = 0, \
+  .valSize = 0, \
+  .keys = name##Keys, \
+  .vals = (void*) 1 \
+};
