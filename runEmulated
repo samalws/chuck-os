@@ -1,0 +1,5 @@
+set -e
+
+./buildEmulated
+qemu-system-i386 -kernel mykernel.elf
+rm mykernel.elf

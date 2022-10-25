@@ -1,3 +1,5 @@
-gcc kernel.c testbench.c -o testbench
+set -e
+
+./buildTestbench
 ./testbench
 rm testbench

@@ -1,0 +1,3 @@
+set -e
+
+gcc kernel.c testbench.c -o testbench
