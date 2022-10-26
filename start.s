@@ -2,6 +2,7 @@ global start
 
 global exampleIOStartPoint
 global exampleIOInput
+global exampleProgramStartPoint
 global runIO
 global runProgram
 global allocMID
@@ -47,7 +48,8 @@ section .data
 welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
 isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
 isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
-inIOMsg db "We're in IO", BKSLASHN, 0
+inIOMsg db "We're in IO; here's my arg:", BKSLASHN, 0
+inProgramMsg db "We're in a program now", BKSLASHN, 0
 kernelReturnedMsg db "Kernel returned:", BKSLASHN, 0
 hundredLoc dq 100
 exampleIOInput dq hundredLoc ; TODO why is this a warning?
@@ -380,12 +382,35 @@ mov eax, [eax]
 call printNumStd
 ret
 
+exampleProgramStartPoint:
+; return 50
+mov ecx, 50
+mov [ebx], ecx
+
+mov eax, [eax]
+push eax
+
+mov eax, inProgramMsg
+call printStrStd
+
+pop eax
+call printNumStd
+
+ret
+
 runIO:
-mov ebx, [esp+4]
-mov eax, [ebx]
-call [ebx+4]
+mov edx, [esp+4]
+mov eax, [edx]
+call [edx+4]
 ret
 
 runProgram:
+; TODO change memory permissions, enter different ring
+mov edx, [esp+4]
+mov eax, [edx+12] ; inputs
+mov ebx, [esp+8] ; otpLoc
+call [edx+16]
+ret
+
 allocMID:
 freeMID:

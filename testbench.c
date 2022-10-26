@@ -9,6 +9,11 @@ void* exampleIOStartPoint(void* inp) {
   printf("We're in IO, inp is %ld\n", * (long*) inp);
 }
 
+void exampleProgramStartPoint(void* inp, enum ProgramOtp* otp) {
+  printf("We're in a program, inp is %ld\n", * (long*) inp);
+  *otp = 50;
+}
+
 void runIO(struct IO* io, enum ProgramInp* otpLoc) {
   void (*asFunction) (void*, enum ProgramInp*) = io->startPoint;
   asFunction(io->input, otpLoc);
@@ -95,7 +100,8 @@ int testMaps() {
 int main() {
   printf("Running testbench...\n");
 
-  kernelMain();
+  void* kernelOtp = kernelMain();
+  printf("Kernel outputted %ld\n", (long) kernelOtp);
 
   if (testSets() == 0)
     printf("Sets test passed\n");

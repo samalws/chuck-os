@@ -39,10 +39,9 @@
 // gc, linearity check
 
 // "technical":
-// real IO (probably the second easiest)
 // figure out where to malloc stuff (prog arguments, ProgramOutput and ProgramInput)
 // real memory allocation
-// real process calls
+// put process into user mode
 
 #include "main.h"
 
@@ -379,4 +378,15 @@ void* kernelMain() {
     startPoint: (void*) exampleIOStartPoint
   };
   runIO(&exampleIO, 0);
+  long otpTo = 0;
+  long inputs = 10;
+  struct Program exampleProgram = {
+    sudo: false,
+    arity: 0,
+    argsGiven: 0,
+    inputs: (void*) &inputs,
+    startPoint: (void*) exampleProgramStartPoint
+  };
+  runProgram(&exampleProgram, (void*) &otpTo);
+  return (void*) otpTo;
 }

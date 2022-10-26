@@ -2,6 +2,7 @@
 
 void* exampleIOInput;
 void* exampleIOStartPoint(); // function so that it says in the text section
+void* exampleProgramStartPoint();
 
 volatile void* runIO(struct IO* io, enum ProgramInp* otpLoc);
 void runProgram(struct Program* prog, enum ProgramOtp* otpLoc);
