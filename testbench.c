@@ -2,10 +2,11 @@
 #include <stdlib.h>
 #include "kernel.h"
 
-void* exampleIOInput = 0;
+long oneHundred = 100;
+void* exampleIOInput = &oneHundred;
 
-void* exampleIOStartPoint() {
-  printf("We're in IO\n");
+void* exampleIOStartPoint(void* inp) {
+  printf("We're in IO, inp is %ld\n", * (long*) inp);
 }
 
 void runIO(struct IO* io, enum ProgramInp* otpLoc) {

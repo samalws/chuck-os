@@ -47,7 +47,10 @@ section .data
 welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
 isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
 isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
-inIO db "We're in IO", BKSLASHN, 0
+inIOMsg db "We're in IO", BKSLASHN, 0
+kernelReturnedMsg db "Kernel returned:", BKSLASHN, 0
+hundredLoc dq 100
+exampleIOInput dq hundredLoc ; TODO why is this a warning?
 
 vgaRow dd 0
 vgaCol dd 0
@@ -89,6 +92,13 @@ call loadIdt
 call enterRing3
 call asmKernelMain
 call kernelMain
+
+push eax
+mov eax, kernelReturnedMsg
+call printStrStd
+pop eax
+call printNumStd
+
 .loop:
 jmp .loop
 
@@ -227,12 +237,12 @@ call printStr
 call stdVgaWrite
 ret
 
-printNumberStd:
+printNumStd:
 ; eax: number to write
 ; uses global vars vgaRow and vgaCol
 mov ebx, eax
 call stdVgaRead
-call printNumber
+call printNum
 call stdVgaWrite
 ret
 
@@ -301,7 +311,7 @@ mov edx, 0
 inc ecx
 ret
 
-printNumber:
+printNum:
 ; ebx: number to write
 ; ecx, edx: coord
 ; clobbers eax and ebx
@@ -362,16 +372,20 @@ ret
 ; things we're supposed to define from main.h:
 
 exampleIOStartPoint:
-mov eax, inIO
+push eax
+mov eax, inIOMsg
 call printStrStd
+pop eax
+mov eax, [eax]
+call printNumStd
 ret
 
 runIO:
-mov eax, [esp+4]
-call [eax+4]
+mov ebx, [esp+4]
+mov eax, [ebx]
+call [ebx+4]
 ret
 
-exampleIOInput:
 runProgram:
 allocMID:
 freeMID:
