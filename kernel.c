@@ -137,10 +137,25 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   void* progMids[1] = { (void*) exampleProgramStartPoint };
   runProgram(1, progMids, (void*) &inpToProg, (void*) &otpFromProg);
 
-  print("Printed from the kernel!\n");
+  char atoiVal[11];
 
-  char atoiVal[10];
-  _atoi(atoiVal, otpFromIO + otpFromProg + (long) memAllowedStart + ((long) memAllowedEnd)*2);
+  _atoi(atoiVal, otpFromIO);
+  print("IO output: ");
+  print(atoiVal);
+  print("\n");
+
+  _atoi(atoiVal, otpFromProg);
+  print("Program output: ");
+  print(atoiVal);
+  print("\n");
+
+  _atoi(atoiVal, (long) memAllowedStart);
+  print("Memory start: ");
+  print(atoiVal);
+  print("\n");
+
+  _atoi(atoiVal, (long) memAllowedEnd);
+  print("Memory end: ");
   print(atoiVal);
   print("\n");
 

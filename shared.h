@@ -1,3 +1,5 @@
+// TODO add "pointer to ID"? that way we can check for equality
+
 #ifndef shared_h
 #define shared_h
 

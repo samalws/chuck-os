@@ -43,6 +43,8 @@ isrStack:
 times 4096 db 0
 .top:
 
+bssEnd:
+
 section .data
 welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
 isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
@@ -92,8 +94,8 @@ call loadIdt
 call enterRing3
 call asmKernelMain
 
-push 10000
-push 1
+push 1000000000 ; 1 GB
+push bssEnd
 call kernelMain
 
 mov eax, doneMsg

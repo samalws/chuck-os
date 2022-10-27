@@ -3,7 +3,7 @@ set -e
 nasm -w-other -f elf32 start.s
 i686-elf-gcc -std=gnu99 -ffreestanding -c util.c -o util.o
 i686-elf-gcc -std=gnu99 -ffreestanding -c kernel.c -o kernel.o
-i686-elf-gcc -ffreestanding -nostdlib -T linker.ld start.o util.o kernel.o -o mykernel.elf -lgcc
+i686-elf-gcc -ffreestanding -nostdlib -T linker.ld util.o kernel.o start.o -o mykernel.elf -lgcc
 rm start.o
 rm kernel.o
 rm util.o

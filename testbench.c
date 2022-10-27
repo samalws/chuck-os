@@ -97,12 +97,16 @@ int testMaps() {
 int main() {
   printf("Running testbench...\n");
 
-  kernelMain((void*) 1, (void*) 10000);
-
   if (testSets() == 0)
     printf("Sets test passed\n");
   if (testMaps() == 0)
     printf("Maps test passed\n");
+
+  printf("Running kernelMain...\n");
+
+  const int kernelSpaceSize = 1000000000; // 1 GB
+  void* kernelSpace = malloc(kernelSpaceSize);
+  kernelMain(kernelSpace, kernelSpace+kernelSpaceSize);
 
   return 0;
 }
