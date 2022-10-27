@@ -1,12 +1,10 @@
 global start
 
 global exampleIOStartPoint
-global exampleIOInput
 global exampleProgramStartPoint
 global runIO
 global runProgram
-global allocMID
-global freeMID
+global printStrStd
 
 extern kernelMain
 
@@ -48,11 +46,10 @@ section .data
 welcome db "Welcome to Chuck OS! (now in userspace very cool)", BKSLASHN, 0
 isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)", BKSLASHN, 0
 isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
-inIOMsg db "We're in IO; here's my arg:", BKSLASHN, 0
+inIOMsg db "We're in IO", BKSLASHN, 0
 inProgramMsg db "We're in a program now", BKSLASHN, 0
 kernelReturnedMsg db "Kernel returned:", BKSLASHN, 0
 hundredLoc dq 100
-exampleIOInput dq hundredLoc ; TODO why is this a warning?
 
 vgaRow dd 0
 vgaCol dd 0
@@ -93,6 +90,11 @@ call loadGdt
 call loadIdt
 call enterRing3
 call asmKernelMain
+
+mov eax, 10000
+push eax
+mov eax, 1
+push eax
 call kernelMain
 
 push eax
@@ -373,44 +375,43 @@ ret
 
 ; things we're supposed to define from main.h:
 
+; TODO everything here on is busted
+
 exampleIOStartPoint:
-push eax
+mov ecx, [eax]
+mov edx, ecx
+add edx, ecx
+add edx, ecx
+mov [ebx], edx
+
 mov eax, inIOMsg
 call printStrStd
-pop eax
-mov eax, [eax]
-call printNumStd
+
 ret
 
 exampleProgramStartPoint:
-; return 50
-mov ecx, 50
-mov [ebx], ecx
-
-mov eax, [eax]
-push eax
+mov edx, [eax]
+add edx, edx
+add edx, edx
+mov [ebx], edx
 
 mov eax, inProgramMsg
 call printStrStd
 
-pop eax
-call printNumStd
-
 ret
 
 runIO:
-mov edx, [esp+4]
-mov eax, [edx]
-call [edx+4]
+mov edx, [esp+4] ; execAt
+mov eax, [esp+8] ; inpLoc
+mov ebx, [esp+12] ; otpLoc
+call edx
 ret
 
 runProgram:
 ; TODO change memory permissions, enter different ring
-mov edx, [esp+4]
-mov eax, [edx+12] ; inputs
-mov ebx, [esp+8] ; otpLoc
-call [edx+16]
+mov edx, [esp+8] ; mids
+mov edx, edx[0]
+mov eax, [esp+12] ; inpLoc
+mov ebx, [esp+16] ; otpLoc
+call edx
 ret
-
-allocMID:
-freeMID:

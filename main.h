@@ -1,11 +1,9 @@
 #include "shared.h"
 
-void* exampleIOInput;
 void* exampleIOStartPoint(); // function so that it says in the text section
 void* exampleProgramStartPoint();
 
-volatile void* runIO(struct IO* io, enum ProgramInp* otpLoc);
-void runProgram(struct Program* prog, enum ProgramOtp* otpLoc);
+void printStrStd(char* str);
 
-ID allocMID(int size);
-void freeMID(ID mid);
+void runIO(void* execAt, void* inpLoc, void* otpLoc);
+void runProgram(int nMids, void** mids, void* inpLoc, void* otpLoc);

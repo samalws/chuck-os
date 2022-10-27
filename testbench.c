@@ -1,35 +1,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "kernel.h"
+#include "util.h"
 
-long oneHundred = 100;
-void* exampleIOInput = &oneHundred;
-
-void* exampleIOStartPoint(void* inp) {
-  printf("We're in IO, inp is %ld\n", * (long*) inp);
+void printStrStd(char* str) {
+  printf("%s",str);
 }
 
-void exampleProgramStartPoint(void* inp, enum ProgramOtp* otp) {
-  printf("We're in a program, inp is %ld\n", * (long*) inp);
-  *otp = 50;
+void exampleIOStartPoint(void* inp, void* otp) {
+  long longInp = * (long*) inp;
+  printf("We're in IO, inp is %ld\n", longInp);
+  * (long*) otp = longInp*3;
 }
 
-void runIO(struct IO* io, enum ProgramInp* otpLoc) {
-  void (*asFunction) (void*, enum ProgramInp*) = io->startPoint;
-  asFunction(io->input, otpLoc);
+void exampleProgramStartPoint(void* inp, void* otp) {
+  long longInp = * (long*) inp;
+  printf("We're in a program, inp is %ld\n", longInp);
+  * (long*) otp = longInp*4;
 }
 
-void runProgram(struct Program* prog, enum ProgramOtp* otpLoc) {
-  void (*asFunction) (void*, enum ProgramOtp*) = prog->startPoint;
-  asFunction(prog->inputs, otpLoc);
+void runIO(void* startPoint, void* inpLoc, void* otpLoc) {
+  void (*asFunction) (void*, void*) = startPoint;
+  asFunction(inpLoc, otpLoc);
 }
 
-ID allocMID(int size) {
-  return (ID) malloc(size);
-}
-
-void freeMID(ID mid) {
-  free((void*) mid);
+void runProgram(int nMids, void** mids, void* inpLoc, void* otpLoc) {
+  void (*asFunction) (void*, void*) = mids[0];
+  asFunction(inpLoc, otpLoc);
 }
 
 int testSets() {
@@ -100,7 +97,7 @@ int testMaps() {
 int main() {
   printf("Running testbench...\n");
 
-  void* kernelOtp = kernelMain();
+  void* kernelOtp = kernelMain((void*) 1, (void*) 10000);
   printf("Kernel outputted %ld\n", (long) kernelOtp);
 
   if (testSets() == 0)
