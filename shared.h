@@ -39,7 +39,7 @@ enum ValEnum {
   LitProgram,
   MakeToken,
   LitIO,
-  Pointer
+  PointerOutsideExecEnv
 };
 
 struct Value {
@@ -47,9 +47,10 @@ struct Value {
   union {
     unsigned long literal;
     struct { ID id; enum IDType idType; } idAndType;
-    struct { struct Value* va; struct Value* vb; bool bl; } valuesAndBool;
-    struct { struct Value* mids; int arity; bool sudo; } litProgram;
-    struct { void* execAt; struct Value* args; } litIO;
+    struct { struct Value* va; struct Value* vb; bool bl; bool subsReady; } valuesAndBool;
+    struct { struct Value* mids; int arity; bool sudo; bool subsReady; } litProgram;
+    struct { void* execAt; struct Value* args; bool subsReady; } litIO;
+    struct { void* execEnv; struct Value* v; } pointerOutsideExecEnv;
   } valUnion;
 };
 
