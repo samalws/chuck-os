@@ -12,6 +12,24 @@ void* _memcpy(void* dest, const void* src, long unsigned n) {
   return dest;
 }
 
+void _atoi(char* dest, long unsigned n) {
+  char* dest2 = dest;
+  while (n != 0) {
+    *dest2 = '0' + (char) (n%10);
+    n /= 10;
+    dest2++;
+  }
+  *dest2 = 0;
+  dest2--;
+  while (dest < dest2) {
+    char tmp = *dest;
+    *dest = *dest2;
+    *dest2 = tmp;
+    dest++;
+    dest2--;
+  }
+}
+
 void* lookup(struct MIDMap* map, ID key) {
   for (int i = 0; i < map->size; i++)
     if (map->keys[i] == key)

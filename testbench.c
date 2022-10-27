@@ -3,7 +3,7 @@
 #include "kernel.h"
 #include "util.h"
 
-void printStrStd(char* str) {
+void print(char* str) {
   printf("%s",str);
 }
 
@@ -97,8 +97,7 @@ int testMaps() {
 int main() {
   printf("Running testbench...\n");
 
-  void* kernelOtp = kernelMain((void*) 1, (void*) 10000);
-  printf("Kernel outputted %ld\n", (long) kernelOtp);
+  kernelMain((void*) 1, (void*) 10000);
 
   if (testSets() == 0)
     printf("Sets test passed\n");

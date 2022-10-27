@@ -4,7 +4,7 @@ global exampleIOStartPoint
 global exampleProgramStartPoint
 global runIO
 global runProgram
-global printStrStd
+global print
 
 extern kernelMain
 
@@ -48,8 +48,7 @@ isrNonExceptMsg db "Sir an interrupt has triggered! (we're back in the kernel)",
 isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)", BKSLASHN, 0
 inIOMsg db "We're in IO", BKSLASHN, 0
 inProgramMsg db "We're in a program now", BKSLASHN, 0
-kernelReturnedMsg db "Kernel returned:", BKSLASHN, 0
-hundredLoc dq 100
+doneMsg db "Done", BKSLASHN, 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -97,11 +96,8 @@ mov eax, 1
 push eax
 call kernelMain
 
-push eax
-mov eax, kernelReturnedMsg
+mov eax, doneMsg
 call printStrStd
-pop eax
-call printNumStd
 
 .loop:
 jmp .loop
@@ -375,7 +371,9 @@ ret
 
 ; things we're supposed to define from main.h:
 
-; TODO everything here on is busted
+print:
+mov eax, [esp+4]
+jmp printStrStd
 
 exampleIOStartPoint:
 mov ecx, [eax]
