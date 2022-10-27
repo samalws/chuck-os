@@ -7,6 +7,7 @@ global runProgram
 global print
 
 extern kernelMain
+extern _atoi
 
 ; code-wide standard:
 ; when dealing with VGA, ecx is row and edx is col
@@ -49,6 +50,7 @@ isrExceptMsg    db "Sir an exception has triggered! (we're back in the kernel)",
 inIOMsg db "We're in IO", BKSLASHN, 0
 inProgramMsg db "We're in a program now", BKSLASHN, 0
 doneMsg db "Done", BKSLASHN, 0
+printNumBuffer times 11 db 0
 
 vgaRow dd 0
 vgaCol dd 0
@@ -90,10 +92,8 @@ call loadIdt
 call enterRing3
 call asmKernelMain
 
-mov eax, 10000
-push eax
-mov eax, 1
-push eax
+push 10000
+push 1
 call kernelMain
 
 mov eax, doneMsg
@@ -240,10 +240,13 @@ ret
 printNumStd:
 ; eax: number to write
 ; uses global vars vgaRow and vgaCol
-mov ebx, eax
-call stdVgaRead
-call printNum
-call stdVgaWrite
+push eax
+push printNumBuffer
+call _atoi
+pop edx
+pop edx
+mov eax, printNumBuffer
+call printStrStd
 ret
 
 clearScreenStd:
@@ -309,46 +312,6 @@ vgaNewline:
 ; updates ecx, edx
 mov edx, 0
 inc ecx
-ret
-
-printNum:
-; ebx: number to write
-; ecx, edx: coord
-; clobbers eax and ebx
-mov eax, 32
-push eax
-jmp .body
-
-.loop:
-pop eax
-dec eax
-cmp eax, 0
-je .done
-push eax
-
-.body:
-mov eax, ebx
-push ebx
-and eax, 0x80000000
-cmp eax, 0
-je .zeroCase
-
-.oneCase:
-mov bl, '1'
-jmp .after
-
-.zeroCase:
-mov bl, '0'
-
-.after:
-call writeChar
-call vgaInc
-pop ebx
-shl ebx, 1
-jmp .loop
-
-.done:
-call vgaNewline
 ret
 
 writeChar:
