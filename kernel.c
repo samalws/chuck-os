@@ -6,33 +6,126 @@ void* memAllowedEnd;
 ID maxTID;
 void* execEnvStack[1000]; // TODO what size?
 int execEnvStackPtr = 0;
+char programInpSpace[4096]; // TODO what size?
+char programOtpSpace[4096]; // TODO what size?
 
-void* allocMID(int size) {}
+// TODO this is rlly bad
+void* maxMIDAllocated = 0;
+int lastAllocSize = 0;
+void* allocMID(int size) {
+  if (maxMIDAllocated == 0)
+    maxMIDAllocated = memAllowedStart;
+  void* retVal = maxMIDAllocated;
+  maxMIDAllocated += size;
+  lastAllocSize = size;
+  return retVal;
+}
 void freeMID(void* mid) {}
-int getMIDSize(void* mid) {}
+int getMIDSize(void* mid) {
+  return lastAllocSize;
+}
 void makeMIDReadOnly(void* mid) {}
 
 void incRCMID(void* mid) {}
 void decRCMID(void* mid) {}
 
-void pushExecEnv(void* execEnv) {}
-void* peekExecEnv() {}
-void popExecEnv() {}
+void pushExecEnv(void* execEnv) {
+  execEnvStack[execEnvStackPtr++] = execEnv;
+}
+void* peekExecEnv() {
+  return execEnvStackPtr ? execEnvStack[execEnvStackPtr-1] : 0;
+}
+void popExecEnv() {
+  execEnvStackPtr--;
+}
 
-struct Value* allocExecEnv(void* execEnv) {}
-void freeExecEnv(void* execEnv, struct Value* val) {}
+struct Value* allocExecEnv(void* execEnv) {
+  void* mid = execEnv; // TODO deal with multiple mids in execEnv
+  char* asChars = (char*) mid;
+
+  int numAllocBits = getMIDSize(mid) / sizeof(struct Value);
+  int numAllocBytes = (numAllocBits >> 3) + 1; // TODO DRY
+
+  for (int i = 0; i < numAllocBytes; i++)
+    if (asChars[i])
+      for (int j = 0 ;; j++)
+        if (asChars[i] & (1 << j))
+          return &((struct Value*) execEnv)[i<<3 + j];
+  return 0;
+}
+void freeExecEnv(void* execEnv, struct Value* val) {
+  void* mid = execEnv; // TODO deal with multiple mids in execEnv
+  char* asChars = (char*) mid;
+
+  int valOffset = ((void*) val - mid) / sizeof(struct Value);
+
+  char* allocByte = &asChars[valOffset>>3];
+  *allocByte &= ~ (1 << (valOffset & 7)); // wtf?
+}
 
 void incRCExecEnv(void* execEnv, struct Value* val) {}
 void decRCExecEnv(void* execEnv, struct Value* val) {}
 
-void setupExecEnv(struct Value* mids, struct Value* toInitWith, struct Value** retHeadVal, void** execEnv) {}
+void setupExecEnvSingleMid(void* mid) {
+  char* asChars = (char*) mid;
 
-bool pushExecStack(void* execEnv, struct Value* val) {}
-struct Value* popExecStack(void* execEnv) {}
+  int numAllocBits = getMIDSize(mid) / sizeof(struct Value);
+  int numAllocBytes = (numAllocBits >> 3) + 1;
+  int numAllocAllocBytes = ((numAllocBytes / sizeof(struct Value)) >> 3) + 1; // wtf?
+  int numAllocStackBytes = (numAllocBytes >> 2) + 1;
 
-void callVals(void* execEnv, struct Value* f, struct Value* x, struct Value* retLoc) {}
+  for (int i = numAllocAllocBytes; i < numAllocBytes - numAllocStackBytes; i++)
+    asChars[i] = 0xFF;
 
-struct Value* callIO(void* execEnv, void* execAt, struct Value* args) {}
+  for (int i = 0; i < numAllocAllocBytes; i++)
+    asChars[i] = 0;
+
+  for (int i = numAllocBytes - numAllocStackBytes; i < numAllocBytes; i++)
+    asChars[i] = 0;
+
+  // stack pointer
+  int* sp = mid + getMIDSize(mid) - sizeof(int);
+  *sp = 0;
+}
+// TODO should make its own stack rather than being recursive:
+struct Value* copyIntoExecEnv(void* execEnv, struct Value* toInitWith) {
+  struct Value* retVal = allocExecEnv(execEnv);
+  _memcpy(retVal, toInitWith, sizeof(struct Value));
+  // TODO switch on type and call for subtrees
+  return retVal;
+}
+void setupExecEnv(struct Value* mids, struct Value* toInitWith, struct Value** retHeadVal, void** retExecEnv) {
+  void* mid = (void*) mids -> valUnion . idAndType . id; // TODO should traverse tree getting em all instead
+  setupExecEnvSingleMid(mid);
+  *retHeadVal = copyIntoExecEnv(mid, toInitWith);
+  *retExecEnv = mid;
+}
+
+bool pushExecStack(void* execEnv, struct Value* val) {
+  // TODO deal with multiple exec envs, and check for going out of range
+  int* sp = execEnv + getMIDSize(execEnv) - sizeof(int);
+  struct Value* memBlk = ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
+  _memcpy(memBlk, val, sizeof(struct Value));
+  *sp ++;
+}
+struct Value* popExecStack(void* execEnv) {
+  // TODO deal with multiple exec envs, and check for going out of range
+  int* sp = execEnv + getMIDSize(execEnv) - sizeof(int);
+  if (*sp == 0) return 0;
+  *sp --;
+  return ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
+}
+
+void callVals(void* execEnv, struct Value* f, struct Value* x, struct Value* retLoc) {
+  retLoc -> valEnum = Undef; // TODO
+}
+
+struct Value* callIO(void* execEnv, void* execAt, struct Value* args) {
+  struct Value* retVal = allocExecEnv(execEnv);
+  retVal -> valEnum = Undef; // TODO
+  print("IO called\n");
+  return retVal;
+}
 
 // DOESN'T SANITIZE
 // TODO should return bool for success and check whether pushExecStack worked
@@ -107,8 +200,10 @@ void evalExecStack() {
     void* execEnv = peekExecEnv();
     if (execEnv == 0) return;
     struct Value* toEval = popExecStack(execEnv);
-    if (toEval == 0)
+    if (toEval == 0) {
       popExecEnv();
+      continue;
+    }
     eval(execEnv, toEval);
   }
 }
@@ -116,6 +211,7 @@ void evalExecStack() {
 void ioMain(void* execEnv, struct Value* ioVal) {
   for (;;) {
     pushExecEnv(execEnv);
+    pushExecStack(execEnv, ioVal);
     evalExecStack();
     struct Value* newIOVal = callIO(execEnv, ioVal -> valUnion . litIO . execAt, ioVal -> valUnion . litIO . args);
     decRCExecEnv(execEnv, ioVal);
@@ -160,7 +256,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   print("\n");
 
   void* midA = allocMID(1000);
-  void* midB = allocMID(1000);
+  // void* midB = allocMID(1000);
   struct Value midAVal = {
     valEnum: IDVal,
     valUnion: { idAndType: {
@@ -168,7 +264,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
       idType: MIDLinType
     }}
   };
-  struct Value midBVal = {
+  /* struct Value midBVal = {
     valEnum: IDVal,
     valUnion: { idAndType: {
       id: (long) midB,
@@ -182,7 +278,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
       vb: &midBVal,
       subsReady: true
     }}
-  };
+  }; */
 
   struct Value adamVal = {
     valEnum: Undef
@@ -190,6 +286,6 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
 
   struct Value* headVal;
   void* execEnv;
-  setupExecEnv(&mids, &adamVal, &headVal, &execEnv);
+  setupExecEnv(&midAVal /* &mids */, &adamVal, &headVal, &execEnv);
   ioMain(execEnv, headVal);
 }

@@ -13,6 +13,12 @@ void* _memcpy(void* dest, const void* src, long unsigned n) {
 }
 
 void _atoi(char* dest, long unsigned n) {
+  if (n == 0) {
+    dest[0] = '0';
+    dest[1] = 0;
+    return;
+  }
+
   char* dest2 = dest;
   while (n != 0) {
     *dest2 = '0' + (char) (n%10);
