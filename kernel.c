@@ -9,22 +9,104 @@ int execEnvStackPtr = 0;
 char programInpSpace[4096]; // TODO what size?
 char programOtpSpace[4096]; // TODO what size?
 
-// TODO this is rlly bad
-void* maxMIDAllocated = 0;
-int lastAllocSize = 0;
-void* allocMID(int size) {
-  if (maxMIDAllocated == 0)
-    maxMIDAllocated = memAllowedStart;
-  void* retVal = maxMIDAllocated;
-  maxMIDAllocated += size;
-  lastAllocSize = size;
-  return retVal;
+void setupMem(void* _memAllowedStart, void* _memAllowedEnd) {
+  memAllowedStart = _memAllowedStart;
+  memAllowedEnd = _memAllowedEnd;
+
+  char atoiVal[21];
+
+  _atoi(atoiVal, (long) memAllowedStart);
+  print("Memory start: ");
+  print(atoiVal);
+  print("\n");
+
+  _atoi(atoiVal, (long) memAllowedEnd);
+  print("Memory end: ");
+  print(atoiVal);
+  print("\n");
+
+  // TODO should be able to alloc more than 255 pages; use next entry in table to do that
+  char* asBytes = memAllowedStart;
+
+  // SETUP ALLOC BITS
+
+  // TODO check rounding within exec envs bc i prob did it wrong
+  unsigned long memSize = memAllowedEnd - memAllowedStart;
+  unsigned long memPages = memSize >> 12; // rounding down because we don't want to alloc pages that dont exist
+  unsigned long numAllocPages = (memPages >> 12) + 1; // rounding up because uhhhhh
+  unsigned long numAllocAllocPages = (numAllocPages >> 12) + 1; // TODO is this even right
+
+  _atoi(atoiVal, numAllocPages);
+  print("Num alloc pages: ");
+  print(atoiVal);
+  print("\n");
+
+  _atoi(atoiVal, numAllocAllocPages);
+  print("Num alloc alloc pages: ");
+  print(atoiVal);
+  print("\n");
+
+  for (unsigned long pageNum = 0; pageNum < numAllocAllocPages; pageNum++)
+    for (int pageIdx = 0; pageIdx < 4096; pageIdx++)
+      asBytes[(pageNum<<12) + pageIdx] = 1;
+  for (unsigned long pageNum = numAllocAllocPages; pageNum < numAllocPages; pageNum++)
+    for (int pageIdx = 0; pageIdx < 4096; pageIdx++)
+      asBytes[(pageNum<<12) + pageIdx] = 0;
 }
-void freeMID(void* mid) {}
-int getMIDSize(void* mid) {
-  return lastAllocSize;
+
+void* allocMID(char size) {
+  // TODO write changes in table
+
+  char* asBytes = memAllowedStart;
+
+  // TODO propagate changes from above down here too
+  unsigned long memSize = memAllowedEnd - memAllowedStart;
+  unsigned long memPages = memSize >> 12;
+  unsigned long numAllocPages = (memPages >> 12) + 1;
+
+  unsigned long numAllocBytes = numAllocPages << 12;
+
+  int nFound = 0;
+  unsigned long foundStart = 0;
+  unsigned long i = 0;
+  while (i < numAllocBytes) {
+    char thisByte = asBytes[i];
+    if (thisByte) {
+      nFound = 0;
+      i += thisByte;
+    } else {
+      if (nFound == 0)
+        foundStart = i;
+      nFound++;
+      if (nFound >= size) {
+        asBytes[foundStart] = size;
+        return memAllowedStart + (foundStart << 12);
+      }
+      i++;
+    }
+  }
+  return 0;
 }
-void makeMIDReadOnly(void* mid) {}
+void freeMID(void* mid) {
+  // TODO write changes in table
+
+  char* asBytes = memAllowedStart;
+
+  unsigned long byteNum = (mid - memAllowedStart) >> 12;
+  asBytes[byteNum] = 0;
+}
+char getMIDSizePages(void* mid) {
+  char* asBytes = memAllowedStart;
+
+  unsigned long byteNum = (mid - memAllowedStart) >> 12;
+  return asBytes[byteNum];
+}
+long getMIDSizeBytes(void* mid) {
+  return (long) getMIDSizePages(mid) << 12;
+}
+void makeMIDReadOnly(void* mid) {
+  // TODO write changes in table
+}
 
 void incRCMID(void* mid) {}
 void decRCMID(void* mid) {}
@@ -43,7 +125,7 @@ struct Value* allocExecEnv(void* execEnv) {
   void* mid = execEnv; // TODO deal with multiple mids in execEnv
   char* asChars = (char*) mid;
 
-  int numAllocBits = getMIDSize(mid) / sizeof(struct Value);
+  int numAllocBits = getMIDSizeBytes(mid) / sizeof(struct Value);
   int numAllocBytes = (numAllocBits >> 3) + 1; // TODO DRY
 
   for (int i = 0; i < numAllocBytes; i++)
@@ -69,7 +151,7 @@ void decRCExecEnv(void* execEnv, struct Value* val) {}
 void setupExecEnvSingleMid(void* mid) {
   char* asChars = (char*) mid;
 
-  int numAllocBits = getMIDSize(mid) / sizeof(struct Value);
+  int numAllocBits = getMIDSizeBytes(mid) / sizeof(struct Value);
   int numAllocBytes = (numAllocBits >> 3) + 1;
   int numAllocAllocBytes = ((numAllocBytes / sizeof(struct Value)) >> 3) + 1; // wtf?
   int numAllocStackBytes = (numAllocBytes >> 2) + 1;
@@ -84,7 +166,7 @@ void setupExecEnvSingleMid(void* mid) {
     asChars[i] = 0;
 
   // stack pointer
-  int* sp = mid + getMIDSize(mid) - sizeof(int);
+  int* sp = mid + getMIDSizeBytes(mid) - sizeof(int);
   *sp = 0;
 }
 // TODO should make its own stack rather than being recursive:
@@ -103,14 +185,14 @@ void setupExecEnv(struct Value* mids, struct Value* toInitWith, struct Value** r
 
 bool pushExecStack(void* execEnv, struct Value* val) {
   // TODO deal with multiple exec envs, and check for going out of range
-  int* sp = execEnv + getMIDSize(execEnv) - sizeof(int);
+  int* sp = execEnv + getMIDSizeBytes(execEnv) - sizeof(int);
   struct Value* memBlk = ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
   _memcpy(memBlk, val, sizeof(struct Value));
   *sp ++;
 }
 struct Value* popExecStack(void* execEnv) {
   // TODO deal with multiple exec envs, and check for going out of range
-  int* sp = execEnv + getMIDSize(execEnv) - sizeof(int);
+  int* sp = execEnv + getMIDSizeBytes(execEnv) - sizeof(int);
   if (*sp == 0) return 0;
   *sp --;
   return ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
@@ -221,8 +303,7 @@ void ioMain(void* execEnv, struct Value* ioVal) {
 }
 
 void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
-  memAllowedStart = _memAllowedStart;
-  memAllowedEnd = _memAllowedEnd;
+  setupMem(_memAllowedStart, _memAllowedEnd);
 
   long inpToIO = 100;
   long otpFromIO = 0;
@@ -233,7 +314,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   void* progMids[1] = { (void*) exampleProgramStartPoint };
   runProgram(1, progMids, (void*) &inpToProg, (void*) &otpFromProg);
 
-  char atoiVal[11];
+  char atoiVal[21];
 
   _atoi(atoiVal, otpFromIO);
   print("IO output: ");
@@ -245,18 +326,14 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   print(atoiVal);
   print("\n");
 
-  _atoi(atoiVal, (long) memAllowedStart);
-  print("Memory start: ");
+  void* midA = allocMID(10);
+  // void* midB = allocMID(10);
+
+  _atoi(atoiVal, (long) midA);
+  print("midA: ");
   print(atoiVal);
   print("\n");
 
-  _atoi(atoiVal, (long) memAllowedEnd);
-  print("Memory end: ");
-  print(atoiVal);
-  print("\n");
-
-  void* midA = allocMID(1000);
-  // void* midB = allocMID(1000);
   struct Value midAVal = {
     valEnum: IDVal,
     valUnion: { idAndType: {
