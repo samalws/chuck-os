@@ -133,8 +133,11 @@ struct Value* allocExecEnv(void* execEnv) {
   for (int i = 0; i < numAllocBytes; i++)
     if (asChars[i])
       for (int j = 0 ;; j++)
-        if (asChars[i] & (1 << j))
-          return &((struct Value*) execEnv)[i<<3 + j];
+        if (asChars[i] & (1 << j)) {
+          struct Value* retVal = &((struct Value*) execEnv)[i<<3 + j];
+          retVal->rc = 1;
+          return retVal;
+        }
   return 0;
 }
 void freeExecEnv(void* execEnv, struct Value* val) {
@@ -147,8 +150,34 @@ void freeExecEnv(void* execEnv, struct Value* val) {
   *allocByte &= ~ (1 << (valOffset & 7)); // wtf?
 }
 
-void incRCExecEnv(void* execEnv, struct Value* val) {}
-void decRCExecEnv(void* execEnv, struct Value* val) {}
+void incRCExecEnv(void* execEnv, struct Value* val) {
+  val->rc++;
+}
+// TODO ideally shouldnt be recursive
+void decRCExecEnv(void* execEnv, struct Value* val) {
+  val->rc--;
+  if (val->rc == 0) {
+    switch (val -> valEnum) {
+    case Tup:
+    case Call:
+    case EvalInExecEnv:
+      decRCExecEnv(execEnv, val -> valUnion . valuesAndBool . va);
+      decRCExecEnv(execEnv, val -> valUnion . valuesAndBool . vb);
+      break;
+    case LitProgram:
+      decRCExecEnv(execEnv, val -> valUnion . litProgram . mids);
+      break;
+    case LitIO:
+      decRCExecEnv(execEnv, val -> valUnion . litIO . args);
+      break;
+    case PointerOutsideExecEnv:
+      decRCExecEnv(val -> valUnion . pointerOutsideExecEnv . execEnv, val -> valUnion . pointerOutsideExecEnv . v);
+      decRCMID(val -> valUnion . pointerOutsideExecEnv . execEnv);
+      break;
+    }
+    freeExecEnv(execEnv, val);
+  }
+}
 
 void setupExecEnvSingleMid(void* mid) {
   char* asChars = (char*) mid;
@@ -175,7 +204,7 @@ void setupExecEnvSingleMid(void* mid) {
 struct Value* copyIntoExecEnv(void* execEnv, struct Value* toInitWith) {
   struct Value* retVal = allocExecEnv(execEnv);
   _memcpy(retVal, toInitWith, sizeof(struct Value));
-  // TODO switch on type and call for subtrees
+  // TODO switch on type and call for subtrees; also make rc work correctly
   return retVal;
 }
 void setupExecEnv(struct Value* mids, struct Value* toInitWith, struct Value** retHeadVal, void** retExecEnv) {
@@ -189,14 +218,14 @@ bool pushExecStack(void* execEnv, struct Value* val) {
   // TODO deal with multiple exec envs, and check for going out of range
   int* sp = execEnv + getMIDSizeBytes(execEnv) - sizeof(int);
   struct Value* memBlk = ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
-  _memcpy(memBlk, val, sizeof(struct Value));
-  *sp ++;
+  _memcpy(memBlk, val, sizeof(struct Value)); // TODO rc also what the hell are we doing here??????
+  (*sp) ++;
 }
 struct Value* popExecStack(void* execEnv) {
   // TODO deal with multiple exec envs, and check for going out of range
   int* sp = execEnv + getMIDSizeBytes(execEnv) - sizeof(int);
   if (*sp == 0) return 0;
-  *sp --;
+  (*sp) --;
   return ((struct Value*) sp) - (sizeof(struct Value) * (*sp));
 }
 
@@ -337,6 +366,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   print("\n");
 
   struct Value midAVal = {
+    rc: 1,
     valEnum: IDVal,
     valUnion: { idAndType: {
       id: (long) midA,
@@ -344,6 +374,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
     }}
   };
   /* struct Value midBVal = {
+    rc: 1,
     valEnum: IDVal,
     valUnion: { idAndType: {
       id: (long) midB,
@@ -351,6 +382,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
     }}
   };
   struct Value mids = {
+    rc: 1,
     valEnum: Tup,
     valUnion: { valuesAndBool: {
       va: &midAVal,
@@ -360,6 +392,7 @@ void kernelMain(void* _memAllowedStart, void* _memAllowedEnd) {
   }; */
 
   struct Value adamVal = {
+    rc: 1,
     valEnum: Undef
   };
 

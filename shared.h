@@ -45,6 +45,7 @@ enum ValEnum {
 };
 
 struct Value {
+  int rc;
   enum ValEnum valEnum;
   union {
     unsigned long literal;
