@@ -313,6 +313,8 @@ vgaNewline:
 ; ecx, edx: coord
 ; updates ecx, edx
 mov edx, 0
+cmp ecx, 25
+jg retLbl
 inc ecx
 ret
 

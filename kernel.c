@@ -9,6 +9,8 @@ int execEnvStackPtr = 0;
 char programInpSpace[4096]; // TODO what size?
 char programOtpSpace[4096]; // TODO what size?
 
+// TODO we should really just always keep the size alongside the MID, since the user will want it all the time anyway
+// that changes all these methods below
 void setupMem(void* _memAllowedStart, void* _memAllowedEnd) {
   memAllowedStart = _memAllowedStart;
   memAllowedEnd = _memAllowedEnd;
